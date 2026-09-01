@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>오즈키즈 픽앤핏 · OZKIZ Pick & Fit</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <button class="back-btn" id="backBtn" hidden>← 목록</button>
+    <div class="brand">
+      <span class="brand-mark" id="brandTitle">오즈키즈 픽앤핏</span>
+      <span class="brand-sub" id="brandSub">OZKIZ</span>
+    </div>
+    <nav class="tabs" id="viewTabs" hidden>
+      <button class="tab active" data-view="editor">조합하기</button>
+      <button class="tab" data-view="saved">저장된 조합표</button>
+    </nav>
+    <div class="status" id="syncStatus">노션에서 불러오는 중…</div>
+    <button class="btn-ghost sync-btn" id="syncBtn">↻ 동기화</button>
+  </header>
+
+  <main id="homeView" class="home">
+    <div class="home-head">
+      <h1>촬영회차 목록</h1>
+      <button class="btn-primary" id="newShootBtn">+ 새 촬영 만들기</button>
+    </div>
+
+    <div class="shoot-form" id="shootForm" hidden>
+      <div class="shoot-form-row">
+        <label class="radio-chip"><input type="radio" name="shootCategory" value="컨셉 촬영" checked /> 컨셉 촬영</label>
+        <label class="radio-chip"><input type="radio" name="shootCategory" value="호리존 촬영" /> 호리존 촬영</label>
+      </div>
+      <input type="text" id="shootTitleInput" placeholder="큰제목을 입력하세요 (예: 26FW 겨울 신상)" />
+      <input type="date" id="shootDateInput" />
+      <div class="shoot-form-actions">
+        <button class="btn-primary" id="submitShootBtn">만들기</button>
+        <button class="btn-ghost" id="cancelShootBtn">취소</button>
+      </div>
+      <p class="save-msg error" id="shootFormMsg"></p>
+    </div>
+
+    <div class="shoot-grid" id="shootGrid"></div>
+  </main>
+
+  <main id="editorView" class="editor2" hidden>
+    <section id="modelPickStep" class="model-pick-step">
+      <h2 class="section-label">모델을 선택하세요 (여러 명 선택 가능)</h2>
+      <div class="model-pick-grid" id="modelPickGrid"></div>
+      <button class="btn-primary" id="buildGridBtn" disabled>표 만들기</button>
+    </section>
+
+    <section id="gridStep" class="grid-step" hidden>
+      <div class="grid-body">
+        <aside class="product-sidebar" id="productSidebar">
+          <input type="text" id="productSearch" placeholder="제품명 검색" class="sidebar-search" />
+          <div class="chip-group" id="seasonChips"></div>
+          <div class="chip-group" id="typeChips"></div>
+          <div class="chip-group" id="categoryChips"></div>
+          <div class="sidebar-tools">
+            <button class="link-btn" id="resetFiltersBtn">필터 초기화</button>
+            <span class="sidebar-count" id="sidebarCount"></span>
+          </div>
+          <div class="sidebar-product-grid" id="sidebarProductGrid"></div>
+        </aside>
+
+        <div class="grid-main">
+          <div class="grid-toolbar">
+            <input type="text" id="boardTitleInput" placeholder="조합표 이름 (예: 26FW 룩북 1차)" />
+            <button class="btn-ghost" id="addColumnBtn">+ 착장 추가</button>
+            <button class="btn-ghost" id="editModelsBtn">모델 다시 선택</button>
+            <button class="btn-primary" id="saveBoardBtn">표 저장</button>
+            <span class="save-msg" id="boardSaveMsg"></span>
+          </div>
+          <div class="grid-scroll">
+            <table class="outfit-grid" id="outfitGrid"></table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <main id="savedView" class="saved" hidden>
+    <h2 class="section-label">저장된 조합표</h2>
+    <div class="saved-grid" id="savedGrid"></div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
