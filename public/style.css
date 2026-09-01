@@ -1159,17 +1159,37 @@ button, input {
   border-radius: 8px;
 }
 
-/* ---------- Manual model add form ---------- */
+/* ---------- Manual model add form (modal) ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(43, 36, 32, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0 0 4px;
+}
+
 .model-form {
   border: 1px solid var(--line);
   background: var(--paper-raised);
-  border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 16px;
-  max-width: 360px;
+  border-radius: 14px;
+  padding: 22px;
+  width: 100%;
+  max-width: 380px;
+  max-height: 90vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-shadow: 0 12px 40px rgba(43, 36, 32, 0.25);
 }
 
 .model-form-image-row {

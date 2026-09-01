@@ -42,6 +42,7 @@ const el = {
 
   addModelBtn: document.getElementById("addModelBtn"),
   modelForm: document.getElementById("modelForm"),
+  modelFormBackdrop: document.getElementById("modelFormBackdrop"),
   modelImageInput: document.getElementById("modelImageInput"),
   modelImagePreview: document.getElementById("modelImagePreview"),
   modelNameInput: document.getElementById("modelNameInput"),
@@ -341,12 +342,12 @@ function enterShoot(id) {
     id: null,
     title: "",
     models: [],
-    columns: Array.from({ length: 5 }, (_, i) => ({ id: "c" + Date.now() + i, label: "착장" + (i + 1) })),
+    columns: Array.from({ length: 5 }, (_, i) => ({ id: "c" + Date.now() + i, label: "아이템" + (i + 1) })),
     cells: {},
   };
   el.boardTitleInput.value = "";
   el.boardSaveMsg.textContent = "";
-  el.modelForm.hidden = true;
+  el.modelFormBackdrop.hidden = true;
   renderSidebarFilters();
   renderSidebarProductGrid();
   renderGrid();
@@ -386,12 +387,16 @@ el.addModelBtn.addEventListener("click", () => {
   el.modelNameInput.value = "";
   el.modelImageInput.value = "";
   el.modelImagePreview.hidden = true;
-  el.modelForm.hidden = false;
+  el.modelFormBackdrop.hidden = false;
   renderModelForm();
 });
 
 el.cancelModelBtn.addEventListener("click", () => {
-  el.modelForm.hidden = true;
+  el.modelFormBackdrop.hidden = true;
+});
+
+el.modelFormBackdrop.addEventListener("click", (e) => {
+  if (e.target === el.modelFormBackdrop) el.modelFormBackdrop.hidden = true;
 });
 
 el.modelImageInput.addEventListener("change", () => {
@@ -419,14 +424,14 @@ el.submitModelBtn.addEventListener("click", () => {
     clothingSize: modelFormState.clothingSize,
     shoeSize: modelFormState.shoeSize,
   });
-  el.modelForm.hidden = true;
+  el.modelFormBackdrop.hidden = true;
   renderGrid();
 });
 
 // ---------- Grid step ----------
 el.addColumnBtn.addEventListener("click", () => {
   const n = state.board.columns.length + 1;
-  state.board.columns.push({ id: "c" + Date.now(), label: "착장" + n });
+  state.board.columns.push({ id: "c" + Date.now(), label: "아이템" + n });
   renderGrid();
 });
 
@@ -710,7 +715,7 @@ async function loadSavedBoards() {
         <div class="saved-card-head">
           <div>
             <div class="saved-card-title">${escapeHtml(board.title || "이름 없는 조합표")}</div>
-            <div class="saved-card-sub">모델 ${(board.models || []).length}명 · 착장 ${board.columns.length}개</div>
+            <div class="saved-card-sub">모델 ${(board.models || []).length}명 · 아이템 ${board.columns.length}개</div>
           </div>
         </div>
         <button class="saved-delete">삭제</button>
@@ -725,7 +730,7 @@ async function loadSavedBoards() {
           cells: board.cells,
         };
         el.boardSaveMsg.textContent = "";
-        el.modelForm.hidden = true;
+        el.modelFormBackdrop.hidden = true;
         showView("editor");
         renderSidebarFilters();
         renderSidebarProductGrid();
