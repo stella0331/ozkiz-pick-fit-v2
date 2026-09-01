@@ -341,7 +341,7 @@ function enterShoot(id) {
     id: null,
     title: "",
     models: [],
-    columns: [{ id: "c" + Date.now(), label: "착장1" }],
+    columns: Array.from({ length: 5 }, (_, i) => ({ id: "c" + Date.now() + i, label: "착장" + (i + 1) })),
     cells: {},
   };
   el.boardTitleInput.value = "";
