@@ -38,7 +38,17 @@ const el = {
   addColumnBtn: document.getElementById("addColumnBtn"),
   saveBoardBtn: document.getElementById("saveBoardBtn"),
   boardSaveMsg: document.getElementById("boardSaveMsg"),
-  lookColumns: document.getElementById("lookColumns"),
+  outfitGrid: document.getElementById("outfitGrid"),
+
+  addModelBtn: document.getElementById("addModelBtn"),
+  modelForm: document.getElementById("modelForm"),
+  modelImageInput: document.getElementById("modelImageInput"),
+  modelImagePreview: document.getElementById("modelImagePreview"),
+  modelNameInput: document.getElementById("modelNameInput"),
+  clothingSizeTabs: document.getElementById("clothingSizeTabs"),
+  shoeSizeTabs: document.getElementById("shoeSizeTabs"),
+  submitModelBtn: document.getElementById("submitModelBtn"),
+  cancelModelBtn: document.getElementById("cancelModelBtn"),
 
   productSearch: document.getElementById("productSearch"),
   seasonChips: document.getElementById("seasonChips"),
@@ -322,21 +332,96 @@ function openEditShoot(card, shoot) {
   });
 }
 
+const CLOTHING_SIZES = ["100", "110", "120", "130", "140"];
+const SHOE_SIZES = ["140", "150", "160", "170", "180", "190", "200"];
+
 function enterShoot(id) {
   state.currentShootId = id;
   state.board = {
     id: null,
     title: "",
+    models: [],
     columns: [{ id: "c" + Date.now(), label: "착장1" }],
     cells: {},
   };
   el.boardTitleInput.value = "";
   el.boardSaveMsg.textContent = "";
+  el.modelForm.hidden = true;
   renderSidebarFilters();
   renderSidebarProductGrid();
   renderGrid();
   showView("editor");
 }
+
+// ---------- Manual model add form ----------
+const modelFormState = { clothingSize: "", shoeSize: "", imageDataUrl: "" };
+
+function renderSizeTabs(container, values, selected, onPick) {
+  container.innerHTML = "";
+  values.forEach((v) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "size-tab" + (selected === v ? " on" : "");
+    btn.textContent = v;
+    btn.addEventListener("click", () => onPick(v));
+    container.appendChild(btn);
+  });
+}
+
+function renderModelForm() {
+  renderSizeTabs(el.clothingSizeTabs, CLOTHING_SIZES, modelFormState.clothingSize, (v) => {
+    modelFormState.clothingSize = v;
+    renderModelForm();
+  });
+  renderSizeTabs(el.shoeSizeTabs, SHOE_SIZES, modelFormState.shoeSize, (v) => {
+    modelFormState.shoeSize = v;
+    renderModelForm();
+  });
+}
+
+el.addModelBtn.addEventListener("click", () => {
+  modelFormState.clothingSize = "";
+  modelFormState.shoeSize = "";
+  modelFormState.imageDataUrl = "";
+  el.modelNameInput.value = "";
+  el.modelImageInput.value = "";
+  el.modelImagePreview.hidden = true;
+  el.modelForm.hidden = false;
+  renderModelForm();
+});
+
+el.cancelModelBtn.addEventListener("click", () => {
+  el.modelForm.hidden = true;
+});
+
+el.modelImageInput.addEventListener("change", () => {
+  const file = el.modelImageInput.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    modelFormState.imageDataUrl = reader.result;
+    el.modelImagePreview.src = reader.result;
+    el.modelImagePreview.hidden = false;
+  };
+  reader.readAsDataURL(file);
+});
+
+el.submitModelBtn.addEventListener("click", () => {
+  const name = el.modelNameInput.value.trim();
+  if (!name) {
+    el.modelNameInput.focus();
+    return;
+  }
+  state.board.models.push({
+    id: "m" + Date.now() + Math.random().toString(36).slice(2, 6),
+    name,
+    image: modelFormState.imageDataUrl,
+    clothingSize: modelFormState.clothingSize,
+    shoeSize: modelFormState.shoeSize,
+  });
+  el.modelForm.hidden = true;
+  renderGrid();
+});
 
 // ---------- Grid step ----------
 el.addColumnBtn.addEventListener("click", () => {
@@ -349,81 +434,147 @@ el.boardTitleInput.addEventListener("input", (e) => {
   state.board.title = e.target.value;
 });
 
+function cellKey(modelId, columnId) {
+  return modelId + "__" + columnId;
+}
+
 function renderGrid() {
   const b = state.board;
   el.boardTitleInput.value = b.title || "";
 
-  el.lookColumns.innerHTML = "";
+  if (b.models.length === 0) {
+    el.outfitGrid.innerHTML = `<tr><td class="empty-note">"+ 모델 추가"로 모델을 먼저 추가해주세요.</td></tr>`;
+    return;
+  }
+
+  let html = "<thead><tr><th class=\"row-head\"></th>";
   b.columns.forEach((col) => {
-    const items = b.cells[col.id] || [];
-    const card = document.createElement("div");
-    card.className = "look-card";
-    card.dataset.col = col.id;
-    card.innerHTML = `
-      <div class="look-card-head">
+    html += `<th class="col-head" data-col="${col.id}">
+      <div class="col-head-row">
         <input type="text" value="${escapeHtml(col.label)}" data-col-input="${col.id}" />
         ${b.columns.length > 1 ? `<button class="col-remove-btn" data-col-remove="${col.id}">×</button>` : ""}
       </div>
-      <div class="look-card-drop" data-col="${col.id}">
-        ${items.length === 0
-          ? `<div class="look-card-empty">제품을 끌어다 놓으세요</div>`
-          : `<div class="look-card-thumbs">${items
-              .map((it) => {
-                const p = state.productsById.get(it.id);
-                return `<div class="grid-cell-thumb-wrap">
-                  <img src="${p?.image || placeholderImg()}" alt="" title="${escapeHtml(p?.name || "")}" />
-                  <button class="thumb-remove" data-remove-col="${col.id}" data-remove-id="${it.id}">×</button>
-                </div>`;
-              })
-              .join("")}</div>`
-        }
-      </div>
-    `;
-    el.lookColumns.appendChild(card);
+    </th>`;
   });
+  html += "</tr></thead><tbody>";
 
-  el.lookColumns.querySelectorAll("[data-col-input]").forEach((input) => {
+  b.models.forEach((m) => {
+    html += `<tr><td class="row-head"><div class="row-head-inner">
+        <img src="${m.image || placeholderImg()}" alt="" />
+        <div>
+          <div class="row-head-name">${escapeHtml(m.name)}</div>
+          <div class="row-head-size">${escapeHtml(m.clothingSize ? "의류 " + m.clothingSize : "")}${m.clothingSize && m.shoeSize ? " · " : ""}${escapeHtml(m.shoeSize ? "신발 " + m.shoeSize : "")}</div>
+        </div>
+        <button class="row-head-remove" data-remove-model="${m.id}" title="모델 제거">×</button>
+      </div></td>`;
+    b.columns.forEach((col) => {
+      const key = cellKey(m.id, col.id);
+      const items = b.cells[key] || [];
+      html += `<td class="grid-cell" data-model="${m.id}" data-col="${col.id}">`;
+      if (items.length === 0) {
+        html += `<div class="grid-cell-empty">제품을 끌어다 놓으세요</div>`;
+      } else {
+        html += `<div class="grid-cell-thumbs">`;
+        items.forEach((it) => {
+          const p = state.productsById.get(it.id);
+          const arrival = p?.arrivalDate
+            ? `<div class="cell-item-arrival">입고일 ${escapeHtml(p.arrivalDate)}</div>`
+            : `<div class="cell-item-arrival unset">입고일 미정</div>`;
+          html += `<div class="cell-item">
+            <div class="cell-item-top">
+              <img src="${p?.image || placeholderImg()}" alt="" />
+              <button class="thumb-remove" data-remove-cell="${key}" data-remove-id="${it.id}">×</button>
+            </div>
+            <div class="cell-item-name">${escapeHtml(p?.name || "")}</div>
+            <input type="text" class="cell-item-size" placeholder="사이즈 입력" value="${escapeHtml(it.size || "")}" data-size-cell="${key}" data-size-id="${it.id}" />
+            <label class="cell-item-received">
+              <input type="checkbox" data-received-cell="${key}" data-received-id="${it.id}" ${it.received ? "checked" : ""} />
+              수령 완료
+            </label>
+            ${arrival}
+          </div>`;
+        });
+        html += `</div>`;
+      }
+      html += `</td>`;
+    });
+    html += "</tr>";
+  });
+  html += "</tbody>";
+  el.outfitGrid.innerHTML = html;
+
+  el.outfitGrid.querySelectorAll("[data-col-input]").forEach((input) => {
     input.addEventListener("input", (e) => {
       const colId = e.target.dataset.colInput;
       const col = state.board.columns.find((c) => c.id === colId);
       if (col) col.label = e.target.value;
     });
   });
-  el.lookColumns.querySelectorAll("[data-col-remove]").forEach((btn) => {
+  el.outfitGrid.querySelectorAll("[data-col-remove]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const colId = e.target.dataset.colRemove;
       state.board.columns = state.board.columns.filter((c) => c.id !== colId);
-      delete state.board.cells[colId];
+      Object.keys(state.board.cells).forEach((k) => {
+        if (k.endsWith("__" + colId)) delete state.board.cells[k];
+      });
       renderGrid();
     });
   });
-  el.lookColumns.querySelectorAll("[data-remove-col]").forEach((btn) => {
+  el.outfitGrid.querySelectorAll("[data-remove-model]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const colId = e.target.dataset.removeCol;
-      const id = e.target.dataset.removeId;
-      state.board.cells[colId] = (state.board.cells[colId] || []).filter((it) => it.id !== id);
+      const modelId = e.target.dataset.removeModel;
+      if (!confirm("이 모델을 표에서 제거할까요?")) return;
+      state.board.models = state.board.models.filter((m) => m.id !== modelId);
+      Object.keys(state.board.cells).forEach((k) => {
+        if (k.startsWith(modelId + "__")) delete state.board.cells[k];
+      });
       renderGrid();
     });
   });
-  el.lookColumns.querySelectorAll(".look-card-drop").forEach((drop) => {
-    drop.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      drop.classList.add("drag-over");
+  el.outfitGrid.querySelectorAll("[data-remove-cell]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = e.target.dataset.removeCell;
+      const id = e.target.dataset.removeId;
+      state.board.cells[key] = (state.board.cells[key] || []).filter((it) => it.id !== id);
+      renderGrid();
     });
-    drop.addEventListener("dragleave", () => drop.classList.remove("drag-over"));
-    drop.addEventListener("drop", (e) => {
+  });
+  el.outfitGrid.querySelectorAll("[data-size-cell]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const key = e.target.dataset.sizeCell;
+      const id = e.target.dataset.sizeId;
+      const item = (state.board.cells[key] || []).find((it) => it.id === id);
+      if (item) item.size = e.target.value;
+    });
+  });
+  el.outfitGrid.querySelectorAll("[data-received-cell]").forEach((checkbox) => {
+    checkbox.addEventListener("change", (e) => {
+      const key = e.target.dataset.receivedCell;
+      const id = e.target.dataset.receivedId;
+      const item = (state.board.cells[key] || []).find((it) => it.id === id);
+      if (item) item.received = e.target.checked;
+    });
+  });
+  el.outfitGrid.querySelectorAll(".grid-cell").forEach((cell) => {
+    cell.addEventListener("dragover", (e) => {
       e.preventDefault();
-      drop.classList.remove("drag-over");
+      cell.classList.add("drag-over");
+    });
+    cell.addEventListener("dragleave", () => cell.classList.remove("drag-over"));
+    cell.addEventListener("drop", (e) => {
+      e.preventDefault();
+      cell.classList.remove("drag-over");
       const productId = e.dataTransfer.getData("text/plain");
       if (!productId) return;
       const product = state.productsById.get(productId);
       if (!product) return;
-      const colId = drop.dataset.col;
-      if (!state.board.cells[colId]) state.board.cells[colId] = [];
-      if (!state.board.cells[colId].some((it) => it.id === productId)) {
-        state.board.cells[colId].push({ id: productId, category: product.category });
+      const key = cellKey(cell.dataset.model, cell.dataset.col);
+      if (!state.board.cells[key]) state.board.cells[key] = [];
+      if (!state.board.cells[key].some((it) => it.id === productId)) {
+        state.board.cells[key].push({ id: productId, category: product.category, size: "", received: false });
       }
       renderGrid();
     });
@@ -440,6 +591,7 @@ el.saveBoardBtn.addEventListener("click", async () => {
     const payload = {
       shootId: state.currentShootId,
       title: b.title.trim() || "이름 없는 조합표",
+      models: b.models,
       columns: b.columns,
       cells: b.cells,
     };
@@ -558,7 +710,7 @@ async function loadSavedBoards() {
         <div class="saved-card-head">
           <div>
             <div class="saved-card-title">${escapeHtml(board.title || "이름 없는 조합표")}</div>
-            <div class="saved-card-sub">착장 ${board.columns.length}개</div>
+            <div class="saved-card-sub">모델 ${(board.models || []).length}명 · 착장 ${board.columns.length}개</div>
           </div>
         </div>
         <button class="saved-delete">삭제</button>
@@ -568,10 +720,12 @@ async function loadSavedBoards() {
         state.board = {
           id: board.id,
           title: board.title,
+          models: board.models || [],
           columns: board.columns,
           cells: board.cells,
         };
         el.boardSaveMsg.textContent = "";
+        el.modelForm.hidden = true;
         showView("editor");
         renderSidebarFilters();
         renderSidebarProductGrid();

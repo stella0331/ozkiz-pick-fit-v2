@@ -58,11 +58,31 @@
         <div class="grid-main">
           <div class="grid-toolbar">
             <input type="text" id="boardTitleInput" placeholder="조합표 이름 (예: 26FW 룩북 1차)" />
+            <button class="btn-ghost" id="addModelBtn">+ 모델 추가</button>
             <button class="btn-ghost" id="addColumnBtn">+ 착장 추가</button>
             <button class="btn-primary" id="saveBoardBtn">표 저장</button>
             <span class="save-msg" id="boardSaveMsg"></span>
           </div>
-          <div class="look-columns" id="lookColumns"></div>
+
+          <div class="model-form" id="modelForm" hidden>
+            <div class="model-form-image-row">
+              <img id="modelImagePreview" class="model-image-preview" src="" alt="" hidden />
+              <input type="file" id="modelImageInput" accept="image/*" />
+            </div>
+            <input type="text" id="modelNameInput" placeholder="모델 정보 (예: 예나 118cm/19kg)" />
+            <div class="model-form-label">의류 사이즈</div>
+            <div class="size-tabs" id="clothingSizeTabs"></div>
+            <div class="model-form-label">신발 사이즈</div>
+            <div class="size-tabs" id="shoeSizeTabs"></div>
+            <div class="shoot-form-actions">
+              <button class="btn-primary" id="submitModelBtn">추가</button>
+              <button class="btn-ghost" id="cancelModelBtn">취소</button>
+            </div>
+          </div>
+
+          <div class="grid-scroll">
+            <table class="outfit-grid" id="outfitGrid"></table>
+          </div>
         </div>
       </div>
     </section>

@@ -5,7 +5,7 @@ function toApi(row) {
     id: row.id,
     shootId: row.shoot_id,
     title: row.title,
-    modelIds: row.model_ids || [],
+    models: row.model_ids || [], // reuses the model_ids jsonb column, now storing full manually-entered model objects
     columns: row.columns || [],
     cells: row.cells || {},
     createdAt: row.created_at,
@@ -36,7 +36,7 @@ exports.handler = async (event) => {
         id,
         shoot_id: payload.shootId,
         title: payload.title || "이름 없는 조합표",
-        model_ids: Array.isArray(payload.modelIds) ? payload.modelIds : [],
+        model_ids: Array.isArray(payload.models) ? payload.models : [],
         columns: payload.columns || [{ id: "c1", label: "착장1" }],
         cells: payload.cells || {},
         created_at: now,
@@ -56,7 +56,7 @@ exports.handler = async (event) => {
       if (!id) return { statusCode: 400, headers, body: JSON.stringify({ error: "id가 필요합니다." }) };
       const patch = { updated_at: new Date().toISOString() };
       if (payload.title !== undefined) patch.title = payload.title;
-      if (payload.modelIds !== undefined) patch.model_ids = payload.modelIds;
+      if (payload.models !== undefined) patch.model_ids = payload.models;
       if (payload.columns !== undefined) patch.columns = payload.columns;
       if (payload.cells !== undefined) patch.cells = payload.cells;
       const rows = await sbFetch(`/boards?id=eq.${encodeURIComponent(id)}`, {

@@ -4,6 +4,7 @@ const {
   getSelect,
   getStatus,
   getFileUrl,
+  getDate,
   NotionRateLimitError,
 } = require("./_notion");
 
@@ -41,6 +42,7 @@ function mapProduct(page) {
     season: getSelect(page, "시즌"),
     productType: getSelect(page, "제품유형"),
     status: getStatus(page, "진행상태"),
+    arrivalDate: getDate(page, "입고일"),
   };
 }
 
