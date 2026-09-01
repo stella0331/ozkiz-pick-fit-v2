@@ -11,7 +11,6 @@ const state = {
 
   searchText: "",
   selectedSeasons: new Set(),
-  selectedTypes: new Set(),
   selectedCategories: new Set(),
 };
 
@@ -43,7 +42,6 @@ const el = {
 
   productSearch: document.getElementById("productSearch"),
   seasonChips: document.getElementById("seasonChips"),
-  typeChips: document.getElementById("typeChips"),
   categoryChips: document.getElementById("categoryChips"),
   resetFiltersBtn: document.getElementById("resetFiltersBtn"),
   sidebarCount: document.getElementById("sidebarCount"),
@@ -491,13 +489,12 @@ function renderChipGroup(container, values, selectedSet) {
   });
 }
 
+const SEASON_CHIPS = ["봄", "가을", "여름", "겨울"];
+const CATEGORY_CHIPS = ["세트", "하의", "상의", "아우터", "원피스", "슬립온", "구두", "운동화"];
+
 function renderSidebarFilters() {
-  const seasons = [...new Set(state.products.map((p) => p.season).filter(Boolean))];
-  const types = [...new Set(state.products.map((p) => p.productType).filter(Boolean))];
-  const categories = [...new Set(state.products.map((p) => p.category).filter(Boolean))];
-  renderChipGroup(el.seasonChips, seasons, state.selectedSeasons);
-  renderChipGroup(el.typeChips, types, state.selectedTypes);
-  renderChipGroup(el.categoryChips, categories, state.selectedCategories);
+  renderChipGroup(el.seasonChips, SEASON_CHIPS, state.selectedSeasons);
+  renderChipGroup(el.categoryChips, CATEGORY_CHIPS, state.selectedCategories);
 }
 
 el.productSearch.addEventListener("input", (e) => {
@@ -508,7 +505,6 @@ el.productSearch.addEventListener("input", (e) => {
 el.resetFiltersBtn.addEventListener("click", () => {
   state.searchText = "";
   state.selectedSeasons.clear();
-  state.selectedTypes.clear();
   state.selectedCategories.clear();
   el.productSearch.value = "";
   renderSidebarFilters();
@@ -518,9 +514,12 @@ el.resetFiltersBtn.addEventListener("click", () => {
 function renderSidebarProductGrid() {
   let list = state.products;
   if (state.searchText) list = list.filter((p) => p.name.includes(state.searchText));
-  if (state.selectedSeasons.size) list = list.filter((p) => state.selectedSeasons.has(p.season));
-  if (state.selectedTypes.size) list = list.filter((p) => state.selectedTypes.has(p.productType));
-  if (state.selectedCategories.size) list = list.filter((p) => state.selectedCategories.has(p.category));
+  if (state.selectedSeasons.size) {
+    list = list.filter((p) => p.season && [...state.selectedSeasons].some((s) => p.season.includes(s)));
+  }
+  if (state.selectedCategories.size) {
+    list = list.filter((p) => p.category && [...state.selectedCategories].some((c) => p.category.includes(c)));
+  }
 
   el.sidebarCount.textContent = `${list.length} / ${state.products.length}`;
   el.sidebarProductGrid.innerHTML = "";

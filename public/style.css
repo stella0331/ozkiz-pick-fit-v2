@@ -929,9 +929,10 @@ button, input {
 
 .sidebar-product-grid {
   overflow-y: auto;
+  overflow-x: hidden;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
   padding-right: 2px;
 }
 
@@ -941,6 +942,7 @@ button, input {
   border-radius: 8px;
   padding: 2px;
   text-align: center;
+  min-width: 0;
 }
 
 .sidebar-product-card:hover { border-color: var(--line); }
@@ -957,7 +959,7 @@ button, input {
 }
 
 .sidebar-product-card .spc-name {
-  font-size: 10.5px;
+  font-size: 10px;
   margin-top: 3px;
   overflow: hidden;
   text-overflow: ellipsis;

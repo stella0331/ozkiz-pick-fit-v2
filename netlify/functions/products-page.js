@@ -9,15 +9,25 @@ const {
 
 const PRODUCT_DB_ID = "5d2ae3562c064494b6b1f0fc6469aa8a";
 
-// Only pull recent development years — the DB has many more (older) rows
-// than the app needs, and this is what kept pagination going for a very
-// long time.
-const YEAR_FILTER = {
-  or: [
-    { property: "개발년도", select: { equals: "2024" } },
-    { property: "개발년도", select: { equals: "2025" } },
-    { property: "개발년도", select: { equals: "2026" } },
-    { property: "개발년도", select: { equals: "2027" } },
+const YEARS = ["2027", "2026", "2025", "2024", "2023", "2022"];
+const STATUSES = [
+  "생산요청(국내)",
+  "생산요청(해외)",
+  "생산중(국내)",
+  "생산중(해외)",
+  "계속판매",
+  "단종 예정",
+  "진행 중",
+];
+
+// Only pull products that match all three conditions — recent development
+// years, the OZKIZ brand, and an active/relevant production status. The DB
+// has many more rows than the app needs otherwise.
+const PRODUCT_FILTER = {
+  and: [
+    { or: YEARS.map((y) => ({ property: "개발년도", select: { equals: y } })) },
+    { property: "브랜드", multi_select: { contains: "오즈키즈" } },
+    { or: STATUSES.map((s) => ({ property: "진행상태", status: { equals: s } })) },
   ],
 };
 
@@ -38,7 +48,7 @@ exports.handler = async (event) => {
   const headers = { "Content-Type": "application/json" };
   try {
     const cursor = event.queryStringParameters?.cursor || undefined;
-    const { results, hasMore, nextCursor } = await queryDatabasePage(PRODUCT_DB_ID, cursor, YEAR_FILTER);
+    const { results, hasMore, nextCursor } = await queryDatabasePage(PRODUCT_DB_ID, cursor, PRODUCT_FILTER);
     return {
       statusCode: 200,
       headers,
