@@ -27,8 +27,8 @@ exports.handler = async (event) => {
 
     if (event.httpMethod === "POST") {
       const payload = JSON.parse(event.body || "{}");
-      if (!payload.shootId || !Array.isArray(payload.modelIds)) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: "shootId와 modelIds가 필요합니다." }) };
+      if (!payload.shootId) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: "shootId가 필요합니다." }) };
       }
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const now = new Date().toISOString();
@@ -36,7 +36,7 @@ exports.handler = async (event) => {
         id,
         shoot_id: payload.shootId,
         title: payload.title || "이름 없는 조합표",
-        model_ids: payload.modelIds,
+        model_ids: Array.isArray(payload.modelIds) ? payload.modelIds : [],
         columns: payload.columns || [{ id: "c1", label: "착장1" }],
         cells: payload.cells || {},
         created_at: now,

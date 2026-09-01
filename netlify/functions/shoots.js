@@ -1,12 +1,11 @@
 const { sbFetch } = require("./_store");
 
-const CATEGORIES = ["컨셉 촬영", "호리존 촬영"];
+const DEFAULT_CATEGORY = "촬영코디"; // the "category" split was removed from the UI; kept only so the not-null DB column stays satisfied
 
 function toApi(row) {
   return {
     id: row.id,
     title: row.title,
-    category: row.category,
     shootDate: row.shoot_date || "",
     createdAt: row.created_at,
   };
@@ -23,19 +22,15 @@ exports.handler = async (event) => {
     if (event.httpMethod === "POST") {
       const payload = JSON.parse(event.body || "{}");
       const title = (payload.title || "").trim();
-      const category = payload.category;
       const shootDate = payload.shootDate || null;
       if (!title) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: "큰제목을 입력해주세요." }) };
-      }
-      if (!CATEGORIES.includes(category)) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: "카테고리를 선택해주세요." }) };
+        return { statusCode: 400, headers, body: JSON.stringify({ error: "프로젝트 이름을 입력해주세요." }) };
       }
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const rows = await sbFetch("/shoots", {
         method: "POST",
         headers: { Prefer: "return=representation" },
-        body: JSON.stringify([{ id, title, category, shoot_date: shootDate }]),
+        body: JSON.stringify([{ id, title, category: DEFAULT_CATEGORY, shoot_date: shootDate }]),
       });
       return { statusCode: 200, headers, body: JSON.stringify(toApi(rows[0])) };
     }
@@ -46,13 +41,9 @@ exports.handler = async (event) => {
       if (!id) return { statusCode: 400, headers, body: JSON.stringify({ error: "id가 필요합니다." }) };
       const patch = {};
       if (payload.title !== undefined) patch.title = payload.title.trim();
-      if (payload.category !== undefined) patch.category = payload.category;
       if (payload.shootDate !== undefined) patch.shoot_date = payload.shootDate || null;
       if (patch.title !== undefined && !patch.title) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: "큰제목을 입력해주세요." }) };
-      }
-      if (patch.category !== undefined && !CATEGORIES.includes(patch.category)) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: "카테고리를 선택해주세요." }) };
+        return { statusCode: 400, headers, body: JSON.stringify({ error: "프로젝트 이름을 입력해주세요." }) };
       }
       const rows = await sbFetch(`/shoots?id=eq.${encodeURIComponent(id)}`, {
         method: "PATCH",

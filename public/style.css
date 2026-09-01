@@ -664,6 +664,11 @@ button, input {
   background: #fdeef0;
 }
 
+.model-pick-card.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .model-pick-card img {
   width: 56px;
   height: 56px;
@@ -994,4 +999,104 @@ button, input {
 .sync-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* ---------- Model count step ---------- */
+.model-count-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.model-count-row input[type="number"] {
+  width: 100px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
+.model-pick-count-note {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+
+/* ---------- Look columns (model-free layout) ---------- */
+.look-columns {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  align-items: flex-start;
+  padding-bottom: 10px;
+}
+
+.look-card {
+  width: 260px;
+  flex: 0 0 260px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper-raised);
+  padding: 12px;
+}
+
+.look-card-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.look-card-head input[type="text"] {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.look-card-head input[type="text"]:focus {
+  background: #f2ebe1;
+  outline: none;
+}
+
+.look-card-drop {
+  min-height: 90px;
+  border-radius: 8px;
+}
+
+.look-card-drop.drag-over {
+  background: #fdeef0;
+  outline: 2px dashed var(--berry);
+  outline-offset: -2px;
+}
+
+.look-card-thumbs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.look-card-thumbs img {
+  width: 100%;
+  aspect-ratio: 1/1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #f0e9dd;
+  display: block;
+}
+
+.look-card-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 90px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  text-align: center;
+  padding: 4px;
+  border: 1.5px dashed var(--line);
+  border-radius: 8px;
 }

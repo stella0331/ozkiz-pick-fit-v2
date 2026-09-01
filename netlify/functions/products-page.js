@@ -9,6 +9,18 @@ const {
 
 const PRODUCT_DB_ID = "5d2ae3562c064494b6b1f0fc6469aa8a";
 
+// Only pull recent development years — the DB has many more (older) rows
+// than the app needs, and this is what kept pagination going for a very
+// long time.
+const YEAR_FILTER = {
+  or: [
+    { property: "개발년도", select: { equals: "2024" } },
+    { property: "개발년도", select: { equals: "2025" } },
+    { property: "개발년도", select: { equals: "2026" } },
+    { property: "개발년도", select: { equals: "2027" } },
+  ],
+};
+
 function mapProduct(page) {
   return {
     id: page.id,
@@ -26,7 +38,7 @@ exports.handler = async (event) => {
   const headers = { "Content-Type": "application/json" };
   try {
     const cursor = event.queryStringParameters?.cursor || undefined;
-    const { results, hasMore, nextCursor } = await queryDatabasePage(PRODUCT_DB_ID, cursor);
+    const { results, hasMore, nextCursor } = await queryDatabasePage(PRODUCT_DB_ID, cursor, YEAR_FILTER);
     return {
       statusCode: 200,
       headers,

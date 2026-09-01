@@ -63,9 +63,11 @@ async function queryDatabase(databaseId, extraBody = {}) {
 // Query a single page of a database (one Notion API call). Used to fetch
 // large databases page-by-page from the client instead of looping inside
 // one function invocation, which can exceed the function time limit.
-async function queryDatabasePage(databaseId, cursor) {
+// `filter` is an optional Notion API filter object, passed through as-is.
+async function queryDatabasePage(databaseId, cursor, filter) {
   const body = { page_size: 100 };
   if (cursor) body.start_cursor = cursor;
+  if (filter) body.filter = filter;
   const data = await notionFetch(`/databases/${databaseId}/query`, {
     method: "POST",
     body: JSON.stringify(body),
