@@ -24,7 +24,8 @@ const el = {
   editorView: document.getElementById("editorView"),
   savedView: document.getElementById("savedView"),
 
-  newShootBtn: document.getElementById("newShootBtn"),
+  newConceptBtn: document.getElementById("newConceptBtn"),
+  newHorizonBtn: document.getElementById("newHorizonBtn"),
   shootForm: document.getElementById("shootForm"),
   shootTitleInput: document.getElementById("shootTitleInput"),
   shootDateInput: document.getElementById("shootDateInput"),
@@ -235,8 +236,17 @@ document.getElementById("viewTabs").addEventListener("click", (e) => {
 });
 
 // ---------- Shoot list (home) ----------
-el.newShootBtn.addEventListener("click", () => {
-  el.shootForm.hidden = !el.shootForm.hidden;
+let pendingShootCategory = "컨셉 촬영";
+
+el.newConceptBtn.addEventListener("click", () => {
+  pendingShootCategory = "컨셉 촬영";
+  el.shootForm.hidden = false;
+  el.shootFormMsg.textContent = "";
+});
+
+el.newHorizonBtn.addEventListener("click", () => {
+  pendingShootCategory = "호리존 촬영";
+  el.shootForm.hidden = false;
   el.shootFormMsg.textContent = "";
 });
 
@@ -256,7 +266,7 @@ el.submitShootBtn.addEventListener("click", async () => {
     await fetchJSON("/api/shoots", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, shootDate }),
+      body: JSON.stringify({ title, shootDate, category: pendingShootCategory }),
     });
     el.shootTitleInput.value = "";
     el.shootDateInput.value = "";
@@ -270,9 +280,13 @@ el.submitShootBtn.addEventListener("click", async () => {
   }
 });
 
+function badgeClass(category) {
+  return category === "호리존 촬영" ? "horizon" : "concept";
+}
+
 function renderShootGrid() {
   if (state.shoots.length === 0) {
-    el.shootGrid.innerHTML = `<div class="empty-note">아직 만든 프로젝트가 없어요. "+ 새 촬영 코디 만들기"로 시작해보세요.</div>`;
+    el.shootGrid.innerHTML = `<div class="empty-note">아직 만든 프로젝트가 없어요. 위 버튼으로 시작해보세요.</div>`;
     return;
   }
   el.shootGrid.innerHTML = "";
@@ -284,6 +298,7 @@ function renderShootGrid() {
         <button class="icon-btn shoot-edit-btn">수정</button>
         <button class="icon-btn shoot-delete-btn">삭제</button>
       </div>
+      <span class="shoot-badge ${badgeClass(shoot.category)}">${escapeHtml(shoot.category)}</span>
       <div class="shoot-card-title">${escapeHtml(shoot.title)}</div>
       <div class="shoot-card-date">${shoot.shootDate ? "촬영일 " + escapeHtml(shoot.shootDate) : "촬영일 미정"}</div>
     `;
@@ -338,9 +353,11 @@ const SHOE_SIZES = ["140", "150", "160", "170", "180", "190", "200"];
 
 function enterShoot(id) {
   state.currentShootId = id;
+  const shoot = state.shoots.find((s) => s.id === id);
   state.board = {
     id: null,
     title: "",
+    category: shoot?.category || "컨셉 촬영",
     models: [],
     columns: Array.from({ length: 5 }, (_, i) => ({ id: "c" + Date.now() + i, label: "아이템" + (i + 1) })),
     cells: {},
@@ -381,6 +398,7 @@ function renderModelForm() {
 }
 
 el.addModelBtn.addEventListener("click", () => {
+  if (state.board.category === "호리존 촬영" && state.board.models.length >= 1) return; // capped at 1 model
   modelFormState.clothingSize = "";
   modelFormState.shoeSize = "";
   modelFormState.imageDataUrl = "";
@@ -443,9 +461,16 @@ function cellKey(modelId, columnId) {
   return modelId + "__" + columnId;
 }
 
+function updateAddModelBtnState() {
+  const capped = state.board.category === "호리존 촬영" && state.board.models.length >= 1;
+  el.addModelBtn.disabled = capped;
+  el.addModelBtn.textContent = capped ? "모델 1명 고정 (호리존)" : "+ 모델 추가";
+}
+
 function renderGrid() {
   const b = state.board;
   el.boardTitleInput.value = b.title || "";
+  updateAddModelBtnState();
 
   if (b.models.length === 0) {
     el.outfitGrid.innerHTML = `<tr><td class="empty-note">"+ 모델 추가"로 모델을 먼저 추가해주세요.</td></tr>`;
@@ -722,9 +747,11 @@ async function loadSavedBoards() {
       `;
       card.addEventListener("click", (e) => {
         if (e.target.closest(".saved-delete")) return;
+        const shoot = state.shoots.find((s) => s.id === state.currentShootId);
         state.board = {
           id: board.id,
           title: board.title,
+          category: shoot?.category || "컨셉 촬영",
           models: board.models || [],
           columns: board.columns,
           cells: board.cells,
