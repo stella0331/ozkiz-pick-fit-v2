@@ -27,7 +27,7 @@ const STATUSES = [
 const PRODUCT_FILTER = {
   and: [
     { or: YEARS.map((y) => ({ property: "개발년도", select: { equals: y } })) },
-    { property: "브랜드", multi_select: { contains: "오즈키즈" } },
+    { property: "브랜드", select: { equals: "오즈키즈" } },
     { or: STATUSES.map((s) => ({ property: "진행상태", status: { equals: s } })) },
   ],
 };
