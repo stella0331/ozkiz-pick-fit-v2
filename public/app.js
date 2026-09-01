@@ -472,17 +472,33 @@ function updateAddModelBtnState() {
 }
 
 el.addLookRowBtn.addEventListener("click", () => {
-  const n = state.board.lookRows.length + 1;
+  const n = state.board.lookRows.length + 2; // +2 because the model row itself counts as 착장 1
   state.board.lookRows.push({ id: "l" + Date.now(), label: "착장 " + n });
   renderGrid();
 });
 
-function renderRowCellsHtml(b, rowId) {
+const ROW_HEAD_WIDTH = 150;
+const MIN_COL_WIDTH = 220;
+
+function computeColWidthPx() {
+  // Always sized as if there were 5 columns — deleting items down to 1, 2,
+  // or any count never stretches the remaining ones; empty space just
+  // stays empty on the right. More than 5 still overflows into a scrollbar.
+  const container = el.outfitGrid.parentElement; // .grid-scroll
+  const containerWidth = container ? container.clientWidth : 0;
+  if (containerWidth > ROW_HEAD_WIDTH + 40) {
+    const avail = containerWidth - ROW_HEAD_WIDTH;
+    return Math.max(MIN_COL_WIDTH, avail / 5);
+  }
+  return MIN_COL_WIDTH;
+}
+
+function renderRowCellsHtml(b, rowId, colWidth) {
   let html = "";
   b.columns.forEach((col) => {
     const key = cellKey(rowId, col.id);
     const items = b.cells[key] || [];
-    html += `<td class="grid-cell" data-model="${rowId}" data-col="${col.id}">`;
+    html += `<td class="grid-cell" style="width:${colWidth}px" data-model="${rowId}" data-col="${col.id}">`;
     if (items.length === 0) {
       html += `<div class="grid-cell-empty">제품을 끌어다 놓으세요</div>`;
     } else {
@@ -523,9 +539,15 @@ function renderGrid() {
     return;
   }
 
-  let html = "<thead><tr><th class=\"row-head\"></th>";
+  const colWidth = computeColWidthPx();
+  const tableWidth = ROW_HEAD_WIDTH + b.columns.length * colWidth;
+  el.outfitGrid.style.tableLayout = "fixed";
+  el.outfitGrid.style.width = tableWidth + "px";
+
+  let html = `<thead><tr><th class="row-head" style="width:${ROW_HEAD_WIDTH}px">`;
+  html += "</th>";
   b.columns.forEach((col) => {
-    html += `<th class="col-head" data-col="${col.id}">
+    html += `<th class="col-head" style="width:${colWidth}px" data-col="${col.id}">
       <div class="col-head-row">
         <input type="text" value="${escapeHtml(col.label)}" data-col-input="${col.id}" />
         ${b.columns.length > 1 ? `<button class="col-remove-btn" data-col-remove="${col.id}">×</button>` : ""}
@@ -538,12 +560,13 @@ function renderGrid() {
     html += `<tr><td class="row-head"><div class="row-head-inner">
         <img src="${m.image || placeholderImg()}" alt="" />
         <div>
+          ${b.category === "호리존 촬영" ? `<div class="row-head-look-label">착장 1</div>` : ""}
           <div class="row-head-name">${escapeHtml(m.name)}</div>
           <div class="row-head-size">${escapeHtml(m.clothingSize ? "의류 " + m.clothingSize : "")}${m.clothingSize && m.shoeSize ? " · " : ""}${escapeHtml(m.shoeSize ? "신발 " + m.shoeSize : "")}</div>
         </div>
         <button class="row-head-remove" data-remove-model="${m.id}" title="모델 제거">×</button>
       </div></td>`;
-    html += renderRowCellsHtml(b, m.id);
+    html += renderRowCellsHtml(b, m.id, colWidth);
     html += "</tr>";
   });
 
@@ -554,7 +577,7 @@ function renderGrid() {
         </div>
         <button class="row-head-remove" data-remove-lookrow="${row.id}" title="착장 행 제거">×</button>
       </div></td>`;
-    html += renderRowCellsHtml(b, row.id);
+    html += renderRowCellsHtml(b, row.id, colWidth);
     html += "</tr>";
   });
 
