@@ -6,6 +6,7 @@ function toApi(row) {
     shootId: row.shoot_id,
     title: row.title,
     models: row.model_ids || [], // reuses the model_ids jsonb column, now storing full manually-entered model objects
+    lookRows: row.look_rows || [],
     columns: row.columns || [],
     cells: row.cells || {},
     createdAt: row.created_at,
@@ -37,6 +38,7 @@ exports.handler = async (event) => {
         shoot_id: payload.shootId,
         title: payload.title || "이름 없는 조합표",
         model_ids: Array.isArray(payload.models) ? payload.models : [],
+        look_rows: Array.isArray(payload.lookRows) ? payload.lookRows : [],
         columns: payload.columns || [{ id: "c1", label: "착장1" }],
         cells: payload.cells || {},
         created_at: now,
@@ -57,6 +59,7 @@ exports.handler = async (event) => {
       const patch = { updated_at: new Date().toISOString() };
       if (payload.title !== undefined) patch.title = payload.title;
       if (payload.models !== undefined) patch.model_ids = payload.models;
+      if (payload.lookRows !== undefined) patch.look_rows = payload.lookRows;
       if (payload.columns !== undefined) patch.columns = payload.columns;
       if (payload.cells !== undefined) patch.cells = payload.cells;
       const rows = await sbFetch(`/boards?id=eq.${encodeURIComponent(id)}`, {

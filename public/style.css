@@ -23,6 +23,14 @@ html, body {
   font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
 }
 
+/* Safety net: an element's own class often sets `display` (flex/grid/etc.),
+   which silently overrides the browser's built-in `[hidden] { display:none }`
+   rule since author styles always beat the UA stylesheet. This one rule
+   guarantees `hidden` always wins, everywhere in the app. */
+[hidden] {
+  display: none !important;
+}
+
 button, input {
   font-family: inherit;
 }
@@ -1181,6 +1189,10 @@ button, input {
   justify-content: center;
   z-index: 100;
   padding: 20px;
+}
+
+.modal-backdrop[hidden] {
+  display: none;
 }
 
 .modal-title {

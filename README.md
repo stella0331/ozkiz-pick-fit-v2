@@ -38,7 +38,7 @@
 앱에 들어가면 먼저 **프로젝트 목록**이 나옵니다. 두 가지 버튼으로 새 프로젝트를 만들 수 있어요.
 
 - **컨셉촬영 코디 만들기** — 모델을 여러 명 추가할 수 있어요.
-- **호리존촬영 코디 만들기** — 모델이 항상 1명으로 고정돼요. 한 명을 추가하면 "+ 모델 추가" 버튼이 비활성화됩니다. 모델을 바꾸고 싶으면 기존 모델을 제거(×)한 뒤 다시 추가하면 돼요.
+- **호리존촬영 코디 만들기** — 모델이 항상 1명으로 고정돼요. 한 명을 추가하면 "+ 모델 추가" 버튼이 비활성화됩니다. 모델을 바꾸고 싶으면 기존 모델을 제거(×)한 뒤 다시 추가하면 돼요. 대신 "+ 착장 추가" 버튼이 나타나서, 그 한 모델 아래로 착장(룩) 행을 몇 개든 추가할 수 있어요.
 
 버튼을 누르면 프로젝트 이름과 촬영일자를 입력하는 폼이 뜹니다. 각 프로젝트 카드는 수정·삭제가 가능합니다.
 
@@ -79,12 +79,18 @@ create table boards (
   shoot_id text not null,
   title text not null,
   model_ids jsonb not null default '[]',
+  look_rows jsonb not null default '[]',
   columns jsonb not null default '[]',
   cells jsonb not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 ```
+
+> 이미 테이블을 만들어두셨다면, 이 한 줄만 Supabase SQL Editor에 붙여넣고 실행하면 됩니다:
+> ```sql
+> alter table boards add column if not exists look_rows jsonb not null default '[]';
+> ```
 
 3. 왼쪽 메뉴 **Project Settings → API**로 이동해서 두 값을 복사합니다.
    - **Project URL** (예: `https://xxxxx.supabase.co`)

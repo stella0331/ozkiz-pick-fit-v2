@@ -42,6 +42,7 @@ const el = {
   outfitGrid: document.getElementById("outfitGrid"),
 
   addModelBtn: document.getElementById("addModelBtn"),
+  addLookRowBtn: document.getElementById("addLookRowBtn"),
   modelForm: document.getElementById("modelForm"),
   modelFormBackdrop: document.getElementById("modelFormBackdrop"),
   modelImageInput: document.getElementById("modelImageInput"),
@@ -359,6 +360,7 @@ function enterShoot(id) {
     title: "",
     category: shoot?.category || "컨셉 촬영",
     models: [],
+    lookRows: [],
     columns: Array.from({ length: 5 }, (_, i) => ({ id: "c" + Date.now() + i, label: "아이템" + (i + 1) })),
     cells: {},
   };
@@ -462,9 +464,53 @@ function cellKey(modelId, columnId) {
 }
 
 function updateAddModelBtnState() {
-  const capped = state.board.category === "호리존 촬영" && state.board.models.length >= 1;
+  const isHorizon = state.board.category === "호리존 촬영";
+  const capped = isHorizon && state.board.models.length >= 1;
   el.addModelBtn.disabled = capped;
   el.addModelBtn.textContent = capped ? "모델 1명 고정 (호리존)" : "+ 모델 추가";
+  el.addLookRowBtn.hidden = !isHorizon;
+}
+
+el.addLookRowBtn.addEventListener("click", () => {
+  const n = state.board.lookRows.length + 1;
+  state.board.lookRows.push({ id: "l" + Date.now(), label: "착장 " + n });
+  renderGrid();
+});
+
+function renderRowCellsHtml(b, rowId) {
+  let html = "";
+  b.columns.forEach((col) => {
+    const key = cellKey(rowId, col.id);
+    const items = b.cells[key] || [];
+    html += `<td class="grid-cell" data-model="${rowId}" data-col="${col.id}">`;
+    if (items.length === 0) {
+      html += `<div class="grid-cell-empty">제품을 끌어다 놓으세요</div>`;
+    } else {
+      html += `<div class="grid-cell-thumbs">`;
+      items.forEach((it) => {
+        const p = state.productsById.get(it.id);
+        const arrival = p?.arrivalDate
+          ? `<div class="cell-item-arrival">입고일 ${escapeHtml(p.arrivalDate)}</div>`
+          : `<div class="cell-item-arrival unset">입고일 미정</div>`;
+        html += `<div class="cell-item">
+          <div class="cell-item-top">
+            <img src="${p?.image || placeholderImg()}" alt="" />
+            <button class="thumb-remove" data-remove-cell="${key}" data-remove-id="${it.id}">×</button>
+          </div>
+          <div class="cell-item-name">${escapeHtml(p?.name || "")}</div>
+          <input type="text" class="cell-item-size" placeholder="사이즈 입력" value="${escapeHtml(it.size || "")}" data-size-cell="${key}" data-size-id="${it.id}" />
+          <label class="cell-item-received">
+            <input type="checkbox" data-received-cell="${key}" data-received-id="${it.id}" ${it.received ? "checked" : ""} />
+            수령 완료
+          </label>
+          ${arrival}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</td>`;
+  });
+  return html;
 }
 
 function renderGrid() {
@@ -497,39 +543,21 @@ function renderGrid() {
         </div>
         <button class="row-head-remove" data-remove-model="${m.id}" title="모델 제거">×</button>
       </div></td>`;
-    b.columns.forEach((col) => {
-      const key = cellKey(m.id, col.id);
-      const items = b.cells[key] || [];
-      html += `<td class="grid-cell" data-model="${m.id}" data-col="${col.id}">`;
-      if (items.length === 0) {
-        html += `<div class="grid-cell-empty">제품을 끌어다 놓으세요</div>`;
-      } else {
-        html += `<div class="grid-cell-thumbs">`;
-        items.forEach((it) => {
-          const p = state.productsById.get(it.id);
-          const arrival = p?.arrivalDate
-            ? `<div class="cell-item-arrival">입고일 ${escapeHtml(p.arrivalDate)}</div>`
-            : `<div class="cell-item-arrival unset">입고일 미정</div>`;
-          html += `<div class="cell-item">
-            <div class="cell-item-top">
-              <img src="${p?.image || placeholderImg()}" alt="" />
-              <button class="thumb-remove" data-remove-cell="${key}" data-remove-id="${it.id}">×</button>
-            </div>
-            <div class="cell-item-name">${escapeHtml(p?.name || "")}</div>
-            <input type="text" class="cell-item-size" placeholder="사이즈 입력" value="${escapeHtml(it.size || "")}" data-size-cell="${key}" data-size-id="${it.id}" />
-            <label class="cell-item-received">
-              <input type="checkbox" data-received-cell="${key}" data-received-id="${it.id}" ${it.received ? "checked" : ""} />
-              수령 완료
-            </label>
-            ${arrival}
-          </div>`;
-        });
-        html += `</div>`;
-      }
-      html += `</td>`;
-    });
+    html += renderRowCellsHtml(b, m.id);
     html += "</tr>";
   });
+
+  (b.lookRows || []).forEach((row) => {
+    html += `<tr><td class="row-head"><div class="row-head-inner">
+        <div>
+          <div class="row-head-name">${escapeHtml(row.label)}</div>
+        </div>
+        <button class="row-head-remove" data-remove-lookrow="${row.id}" title="착장 행 제거">×</button>
+      </div></td>`;
+    html += renderRowCellsHtml(b, row.id);
+    html += "</tr>";
+  });
+
   html += "</tbody>";
   el.outfitGrid.innerHTML = html;
 
@@ -547,6 +575,18 @@ function renderGrid() {
       state.board.columns = state.board.columns.filter((c) => c.id !== colId);
       Object.keys(state.board.cells).forEach((k) => {
         if (k.endsWith("__" + colId)) delete state.board.cells[k];
+      });
+      renderGrid();
+    });
+  });
+  el.outfitGrid.querySelectorAll("[data-remove-lookrow]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rowId = e.target.dataset.removeLookrow;
+      if (!confirm("이 착장 행을 제거할까요?")) return;
+      state.board.lookRows = state.board.lookRows.filter((r) => r.id !== rowId);
+      Object.keys(state.board.cells).forEach((k) => {
+        if (k.startsWith(rowId + "__")) delete state.board.cells[k];
       });
       renderGrid();
     });
@@ -622,6 +662,7 @@ el.saveBoardBtn.addEventListener("click", async () => {
       shootId: state.currentShootId,
       title: b.title.trim() || "이름 없는 조합표",
       models: b.models,
+      lookRows: b.lookRows,
       columns: b.columns,
       cells: b.cells,
     };
@@ -753,6 +794,7 @@ async function loadSavedBoards() {
           title: board.title,
           category: shoot?.category || "컨셉 촬영",
           models: board.models || [],
+          lookRows: board.lookRows || [],
           columns: board.columns,
           cells: board.cells,
         };
