@@ -19,10 +19,8 @@ const el = {
   backBtn: document.getElementById("backBtn"),
   brandTitle: document.getElementById("brandTitle"),
   brandSub: document.getElementById("brandSub"),
-  viewTabs: document.getElementById("viewTabs"),
   homeView: document.getElementById("homeView"),
   editorView: document.getElementById("editorView"),
-  savedView: document.getElementById("savedView"),
 
   newConceptBtn: document.getElementById("newConceptBtn"),
   newHorizonBtn: document.getElementById("newHorizonBtn"),
@@ -35,7 +33,6 @@ const el = {
   shootGrid: document.getElementById("shootGrid"),
 
   gridStep: document.getElementById("gridStep"),
-  boardTitleInput: document.getElementById("boardTitleInput"),
   addColumnBtn: document.getElementById("addColumnBtn"),
   saveBoardBtn: document.getElementById("saveBoardBtn"),
   boardSaveMsg: document.getElementById("boardSaveMsg"),
@@ -59,8 +56,6 @@ const el = {
   resetFiltersBtn: document.getElementById("resetFiltersBtn"),
   sidebarCount: document.getElementById("sidebarCount"),
   sidebarProductGrid: document.getElementById("sidebarProductGrid"),
-
-  savedGrid: document.getElementById("savedGrid"),
 
   syncBtn: document.getElementById("syncBtn"),
 };
@@ -207,9 +202,7 @@ function showView(view) {
   state.currentView = view;
   el.homeView.hidden = view !== "home";
   el.editorView.hidden = view !== "editor";
-  el.savedView.hidden = view !== "saved";
   el.backBtn.hidden = view === "home";
-  el.viewTabs.hidden = view === "home";
 
   if (view === "home") {
     el.brandTitle.textContent = "오즈키즈 픽앤핏";
@@ -219,21 +212,12 @@ function showView(view) {
     el.brandTitle.textContent = shoot ? shoot.title : "";
     el.brandSub.textContent = shoot?.shootDate ? "촬영일 " + shoot.shootDate : "";
   }
-
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === view));
-  if (view === "saved") loadSavedBoards();
 }
 
 el.backBtn.addEventListener("click", () => {
   state.currentShootId = null;
   renderShootGrid();
   showView("home");
-});
-
-document.getElementById("viewTabs").addEventListener("click", (e) => {
-  const btn = e.target.closest(".tab");
-  if (!btn) return;
-  showView(btn.dataset.view);
 });
 
 // ---------- Shoot list (home) ----------
@@ -352,25 +336,44 @@ function openEditShoot(card, shoot) {
 const CLOTHING_SIZES = ["100", "110", "120", "130", "140"];
 const SHOE_SIZES = ["140", "150", "160", "170", "180", "190", "200"];
 
-function enterShoot(id) {
+async function enterShoot(id) {
   state.currentShootId = id;
   const shoot = state.shoots.find((s) => s.id === id);
   state.board = {
     id: null,
-    title: "",
+    title: shoot?.title || "",
     category: shoot?.category || "컨셉 촬영",
     models: [],
     lookRows: [],
     columns: Array.from({ length: 5 }, (_, i) => ({ id: "c" + Date.now() + i, label: "아이템" + (i + 1) })),
     cells: {},
   };
-  el.boardTitleInput.value = "";
   el.boardSaveMsg.textContent = "";
   el.modelFormBackdrop.hidden = true;
   renderSidebarFilters();
   renderSidebarProductGrid();
   renderGrid();
   showView("editor");
+
+  // This project may already have a saved coordi — load it in if so.
+  try {
+    const { boards } = await fetchJSON(`/api/boards?shootId=${encodeURIComponent(id)}`);
+    if (boards && boards.length > 0) {
+      const b = boards[0];
+      state.board = {
+        id: b.id,
+        title: b.title,
+        category: shoot?.category || "컨셉 촬영",
+        models: b.models || [],
+        lookRows: b.lookRows || [],
+        columns: b.columns,
+        cells: b.cells,
+      };
+      renderGrid();
+    }
+  } catch {
+    // no saved coordi yet, or the fetch failed — keep the fresh empty one
+  }
 }
 
 // ---------- Manual model add form ----------
@@ -455,10 +458,6 @@ el.addColumnBtn.addEventListener("click", () => {
   renderGrid();
 });
 
-el.boardTitleInput.addEventListener("input", (e) => {
-  state.board.title = e.target.value;
-});
-
 function cellKey(modelId, columnId) {
   return modelId + "__" + columnId;
 }
@@ -510,7 +509,7 @@ function renderRowCellsHtml(b, rowId, colWidth) {
           : `<div class="cell-item-arrival unset">입고일 미정</div>`;
         html += `<div class="cell-item">
           <div class="cell-item-top">
-            <img src="${p?.image || placeholderImg()}" alt="" />
+            <img src="/api/image-proxy?id=${it.id}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${placeholderImg()}'" />
             <button class="thumb-remove" data-remove-cell="${key}" data-remove-id="${it.id}">×</button>
           </div>
           <div class="cell-item-name">${escapeHtml(p?.name || "")}</div>
@@ -531,7 +530,6 @@ function renderRowCellsHtml(b, rowId, colWidth) {
 
 function renderGrid() {
   const b = state.board;
-  el.boardTitleInput.value = b.title || "";
   updateAddModelBtnState();
 
   if (b.models.length === 0) {
@@ -558,7 +556,7 @@ function renderGrid() {
 
   b.models.forEach((m) => {
     html += `<tr><td class="row-head"><div class="row-head-inner">
-        <img src="${m.image || placeholderImg()}" alt="" />
+        <img src="${m.image || placeholderImg()}" alt="" decoding="async" />
         <div>
           ${b.category === "호리존 촬영" ? `<div class="row-head-look-label">착장 1</div>` : ""}
           <div class="row-head-name">${escapeHtml(m.name)}</div>
@@ -681,9 +679,10 @@ el.saveBoardBtn.addEventListener("click", async () => {
   try {
     el.saveBoardBtn.disabled = true;
     el.saveBoardBtn.textContent = "저장 중…";
+    const shoot = state.shoots.find((s) => s.id === state.currentShootId);
     const payload = {
       shootId: state.currentShootId,
-      title: b.title.trim() || "이름 없는 조합표",
+      title: shoot?.title || "이름 없는 코디",
       models: b.models,
       lookRows: b.lookRows,
       columns: b.columns,
@@ -710,7 +709,7 @@ el.saveBoardBtn.addEventListener("click", async () => {
     el.boardSaveMsg.className = "save-msg error";
   } finally {
     el.saveBoardBtn.disabled = false;
-    el.saveBoardBtn.textContent = "표 저장";
+    el.saveBoardBtn.textContent = "코디 저장";
   }
 });
 
@@ -774,7 +773,7 @@ function renderSidebarProductGrid() {
     card.className = "sidebar-product-card";
     card.draggable = true;
     card.innerHTML = `
-      <img src="${p.image || placeholderImg()}" alt="${escapeHtml(p.name)}" loading="lazy" />
+      <img src="${p.image || placeholderImg()}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" />
       <div class="spc-name">${escapeHtml(p.name)}</div>
     `;
     card.addEventListener("dragstart", (e) => {
@@ -785,60 +784,6 @@ function renderSidebarProductGrid() {
     card.addEventListener("dragend", () => card.classList.remove("dragging"));
     el.sidebarProductGrid.appendChild(card);
   });
-}
-
-// ---------- Saved boards view ----------
-async function loadSavedBoards() {
-  el.savedGrid.innerHTML = `<div class="empty-note">불러오는 중…</div>`;
-  try {
-    const { boards } = await fetchJSON(`/api/boards?shootId=${encodeURIComponent(state.currentShootId)}`);
-    if (boards.length === 0) {
-      el.savedGrid.innerHTML = `<div class="empty-note">아직 저장된 조합표가 없어요.</div>`;
-      return;
-    }
-    el.savedGrid.innerHTML = "";
-    boards.forEach((board) => {
-      const card = document.createElement("div");
-      card.className = "saved-card";
-      card.innerHTML = `
-        <div class="saved-card-head">
-          <div>
-            <div class="saved-card-title">${escapeHtml(board.title || "이름 없는 조합표")}</div>
-            <div class="saved-card-sub">모델 ${(board.models || []).length}명 · 아이템 ${board.columns.length}개</div>
-          </div>
-        </div>
-        <button class="saved-delete">삭제</button>
-      `;
-      card.addEventListener("click", (e) => {
-        if (e.target.closest(".saved-delete")) return;
-        const shoot = state.shoots.find((s) => s.id === state.currentShootId);
-        state.board = {
-          id: board.id,
-          title: board.title,
-          category: shoot?.category || "컨셉 촬영",
-          models: board.models || [],
-          lookRows: board.lookRows || [],
-          columns: board.columns,
-          cells: board.cells,
-        };
-        el.boardSaveMsg.textContent = "";
-        el.modelFormBackdrop.hidden = true;
-        showView("editor");
-        renderSidebarFilters();
-        renderSidebarProductGrid();
-        renderGrid();
-      });
-      card.querySelector(".saved-delete").addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (!confirm("이 조합표를 삭제할까요?")) return;
-        await fetchJSON(`/api/boards?id=${encodeURIComponent(board.id)}`, { method: "DELETE" });
-        loadSavedBoards();
-      });
-      el.savedGrid.appendChild(card);
-    });
-  } catch (err) {
-    el.savedGrid.innerHTML = `<div class="empty-note">불러오기 실패: ${escapeHtml(err.message)}</div>`;
-  }
 }
 
 // ---------- Boot ----------

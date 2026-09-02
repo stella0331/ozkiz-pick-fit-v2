@@ -46,9 +46,9 @@
 1. "+ 모델 추가"로 모델을 추가하면(이미지 업로드 + 정보 + 의류/신발 사이즈) 표에 행이 생깁니다. 컨셉촬영은 여러 명, 호리존촬영은 1명까지만 가능해요.
 2. "아이템" 컬럼이 가로로 5개씩 나열되고, "+ 아이템 추가"로 얼마든지 늘릴 수 있어요. 컬럼 제목은 클릭해서 바로 수정 가능합니다.
 3. 왼쪽 사이드바에서 제품명 검색 · 시즌/카테고리 칩 필터로 제품을 찾고, 썸네일을 각 모델×아이템 셀 위로 드래그해서 놓으면 담깁니다. 담긴 제품마다 이름·사이즈 입력칸·수령완료 체크박스·입고일이 함께 표시됩니다.
-4. **표 저장**으로 조합표 전체를 저장하고, "저장된 조합표" 탭에서 다시 불러오거나 삭제할 수 있습니다.
+4. **코디 저장**을 누르면 지금 보이는 표가 그 프로젝트 자체에 저장됩니다. 별도의 "조합표 이름"을 정하거나 여러 개를 따로 저장하는 개념 없이, **프로젝트 하나당 코디 하나**예요. 프로젝트를 다시 열면 저장해둔 코디가 자동으로 불러와집니다.
 
-촬영회차를 삭제하면 그 안의 저장된 조합표도 함께 삭제됩니다.
+촬영회차를 삭제하면 그 안에 저장된 코디도 함께 삭제됩니다.
 
 ## 4. 조합 저장은 어디에 저장되나요? (Supabase)
 
@@ -63,6 +63,19 @@
 create table kv_cache (
   key text primary key,
   value jsonb not null,
+  synced_at timestamptz not null default now()
+);
+
+create table products (
+  id text primary key,
+  name text,
+  image text,
+  category text,
+  gender text,
+  season text,
+  product_type text,
+  status text,
+  arrival_date text,
   synced_at timestamptz not null default now()
 );
 
@@ -110,6 +123,12 @@ create table boards (
 - 이후부터는 캐시된 데이터를 즉시 보여줘서 빠릅니다.
 - 노션에 새 제품이나 모델을 추가·수정했다면, 화면 오른쪽 위 **"↻ 동기화"** 버튼을 눌러야 반영돼요.
 
+### 표에 담긴 제품 이미지는 왜 며칠이 지나도 안 깨지나요?
+
+노션에 올린 이미지 링크는 보안상 1시간 정도만 유효해요. 캐시에 저장해둔 오래된 링크를 그대로 쓰면 시간이 지나 이미지가 깨져 보여요. 이걸 막기 위해, **모델×아이템 표에 실제로 담긴 제품 이미지**만은 화면에 보여줄 때마다 노션에 최신 주소를 물어보는 작은 중계 기능(`netlify/functions/image-proxy.js`)을 거쳐요. 그래서 며칠이 지나도, 동기화를 안 눌러도 표에 담긴 이미지는 계속 살아있어요.
+
+왼쪽 사이드바(제품 1000개 이상 전체 목록)까지 매번 실시간으로 물어보면 노션 요청이 너무 많아져서 속도제한에 걸릴 수 있어, 사이드바 썸네일은 지금처럼 캐시된 이미지를 쓰고 "↻ 동기화"를 누를 때 갱신돼요.
+
 ## 6. 로컬에서 테스트하고 싶다면
 
 ```bash
@@ -139,3 +158,64 @@ public/
   style.css       디자인
   app.js          화면 동작 로직
 ```
+
+## 부록. 서버사이드 통합 동기화 함수 (sync-products.js) — Free 플랜용 증분 동기화
+
+Netlify **Free 플랜**에서도 쓸 수 있도록, Background Function이 아니라 일반 함수로 만들었어요. 대신 **처음 한 번은 로컬 스크립트로 전체를 밀어 넣고, 그다음부터는 이 함수가 "바뀐 것만" 가져오는" 방식**으로 시간 초과·속도제한 위험을 낮췄습니다.
+
+### 1) Supabase에 `sync_logs` 테이블 추가
+
+```sql
+create table sync_logs (
+  id text primary key,
+  completed_at timestamptz not null
+);
+```
+
+이 테이블에 `id = 'products'`인 행 하나로 "마지막 동기화가 언제 끝났는지"만 기록합니다.
+
+### 2) 최초 1회: 로컬에서 전체 적재 (`scripts/initial-sync.ts`)
+
+제품이 많을 때 처음 한 번은 Netlify 함수가 아니라 **본인 컴퓨터에서** 실행해서, 시간 제한 걱정 없이 전체 데이터를 Supabase에 밀어 넣습니다.
+
+1. 프로젝트 루트에 `.env` 파일을 만들고 아래 세 줄을 넣습니다.
+   ```
+   NOTION_TOKEN=ntn_여기에_토큰
+   SUPABASE_URL=https://xxxxx.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=여기에_service_role_또는_secret_키
+   ```
+2. Node.js가 설치되어 있어야 해요 (버전 18 이상). 터미널에서 프로젝트 폴더로 이동한 뒤:
+   ```bash
+   npx tsx scripts/initial-sync.ts
+   ```
+   `tsx`가 없으면 `npx`가 그 자리에서 자동으로 받아와 실행해줍니다. 진행 상황이 터미널에 "N개 반영됨..."으로 계속 찍히다가 끝나면 완료예요.
+
+이 스크립트는 노션에서 조건에 맞는 제품 **전체**를 가져와 Supabase `products` 테이블에 upsert하고, 끝나면 시작 시각을 `sync_logs`에 기록합니다.
+
+### 3) 이후: 배포된 함수가 담당하는 증분 동기화
+
+`netlify/functions/sync-products.js`는 실행할 때마다 `sync_logs`에서 마지막 동기화 시각을 읽어와서, **그 이후에 수정된(`last_edited_time`) 제품만** 노션에 요청합니다. 평소에는 바뀐 게 몇 개 안 되니 Free 플랜의 짧은 함수 실행 시간 안에 충분히 끝나요.
+
+- 호출: `POST /api/sync-products` (요청 본문 없음). 성공하면 `{ synced: <반영된 개수>, since: <이전 동기화 시각> }`를 반환합니다.
+- 노션에서 조건에 안 맞게 바뀌거나 삭제된 제품은 Supabase `products` 테이블에서 자동으로 지워지지 않아요 (증분 동기화의 한계예요 — 새로 생기거나 바뀐 것만 반영하고, 없어진 것은 그대로 남습니다). 필요하시면 별도 정리 로직을 추가해드릴 수 있어요.
+- 이미 있는 `kv_cache` 기반 동기화("↻ 동기화" 버튼)와는 별개의 테이블(`products`)에 저장돼요. 화면 버튼에 연결하려면 알려주세요 — 지금은 독립된 엔드포인트로만 존재합니다.
+
+## 부록2. GitHub Actions로 자동 동기화 (매주 월요일 새벽 3시)
+
+`.github/workflows/notion-supabase-sync.yml` 워크플로우가 매주 월요일 새벽 3시(한국시간)에 자동으로, 그리고 GitHub 웹에서 버튼 클릭으로 언제든 배포된 `/api/sync-products` 함수를 호출해서 증분 동기화를 실행합니다.
+
+### 설정 (한 번만)
+
+1. GitHub 저장소 → **Settings** → 왼쪽 메뉴 **Secrets and variables → Actions** → **New repository secret**.
+2. Name: `SYNC_ENDPOINT_URL`, Value: 실제 배포된 사이트 주소 + `/api/sync-products` (예: `https://ozkizpicknfit.netlify.app/api/sync-products`).
+3. 저장하면 끝입니다. 코드는 이미 이 시크릿을 사용하도록 되어 있어요.
+
+### 수동으로 즉시 실행하고 싶을 때
+
+GitHub 저장소 → 상단 **Actions** 탭 → 왼쪽에서 "Notion-Supabase 제품 동기화" 클릭 → 오른쪽 **Run workflow** 버튼 → 다시 **Run workflow** 눌러서 바로 실행할 수 있습니다.
+
+### 참고
+
+- GitHub Actions의 `schedule`은 항상 UTC 기준이라, 코드에는 `cron: "0 18 * * 0"`(UTC 일요일 18시 = 한국시간 월요일 새벽 3시)로 넣어뒀어요. 시간을 바꾸고 싶으면 이 줄만 조정하면 됩니다.
+- GitHub의 스케줄 실행은 부하가 몰리면 몇 분 정도 늦게 시작될 수 있어요 (GitHub 자체 특성이라 저희 쪽에서 더 정확하게 맞출 수는 없어요).
+- 실행 결과(성공/실패, 응답 내용)는 Actions 탭에서 해당 실행 기록을 클릭하면 로그로 확인할 수 있습니다.

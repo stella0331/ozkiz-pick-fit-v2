@@ -91,6 +91,11 @@ function getSelect(page, propName) {
   return prop?.select?.name || "";
 }
 
+function getMultiSelect(page, propName) {
+  const prop = page.properties[propName];
+  return (prop?.multi_select || []).map((o) => o.name).join(", ");
+}
+
 function getStatus(page, propName) {
   const prop = page.properties[propName];
   return prop?.status?.name || "";
@@ -121,6 +126,7 @@ module.exports = {
   NotionRateLimitError,
   getTitle,
   getSelect,
+  getMultiSelect,
   getStatus,
   getFileUrl,
   getUrl,
