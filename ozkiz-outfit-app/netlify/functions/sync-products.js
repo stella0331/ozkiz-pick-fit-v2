@@ -8,10 +8,11 @@ const {
   getDate,
   NotionRateLimitError,
 } = require("./_notion");
-const { sbFetch } = require("./_store");
+const { sbFetch, uploadToStorage } = require("./_store");
 
 const PRODUCT_DB_ID = "5d2ae3562c064494b6b1f0fc6469aa8a";
 const SYNC_LOG_ID = "products"; // row id in sync_logs for this particular sync job
+const IMAGE_BUCKET = "product-images";
 
 const BASE_FILTERS = [
   // 1. 브랜드: 오즈키즈
@@ -65,11 +66,31 @@ function buildFilter(lastSyncedAt) {
   return { and };
 }
 
-function mapProduct(page) {
+// Downloads the (soon-to-expire) Notion file URL and re-uploads the actual
+// bytes to our own Supabase Storage bucket, returning a permanent URL. Uses
+// the same "just the product id, no extension" path as image-proxy.js so
+// both share the same cached file. If mirroring fails, falls back to the
+// original Notion URL rather than losing the image entirely.
+async function mirrorImage(notionUrl, productId) {
+  if (!notionUrl) return "";
+  try {
+    const res = await fetch(notionUrl);
+    if (!res.ok) return notionUrl;
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return await uploadToStorage(IMAGE_BUCKET, productId, bytes, contentType);
+  } catch {
+    return notionUrl;
+  }
+}
+
+async function mapProduct(page) {
+  const rawImage = getFileUrl(page, "대표이미지");
+  const image = await mirrorImage(rawImage, page.id);
   return {
     id: page.id,
     name: getTitle(page, "제품명"),
-    image: getFileUrl(page, "대표이미지"),
+    image,
     category: getSelect(page, "의류/슈즈/잡화"),
     gender: getSelect(page, "성별"),
     season: getMultiSelect(page, "시즌"),
@@ -125,7 +146,7 @@ exports.handler = async () => {
     let total = 0;
     do {
       const data = await queryOnePage(filter, cursor);
-      const rows = data.results.map(mapProduct);
+      const rows = await Promise.all(data.results.map(mapProduct));
       if (rows.length > 0) {
         await sbFetch("/products?on_conflict=id", {
           method: "POST",

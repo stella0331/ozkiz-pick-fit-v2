@@ -32,4 +32,27 @@ async function sbFetch(path, options = {}) {
   return text ? JSON.parse(text) : null;
 }
 
-module.exports = { sbFetch };
+// Uploads raw bytes to a Supabase Storage bucket (upsert = overwrite if the
+// path already exists) and returns the permanent public URL. The bucket
+// must be set to "Public" in Supabase for that URL to be servable directly.
+async function uploadToStorage(bucket, path, bytes, contentType) {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY 환경변수가 설정되지 않았습니다.");
+  const res = await fetch(`${baseUrl()}/storage/v1/object/${bucket}/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": contentType || "application/octet-stream",
+      "x-upsert": "true",
+    },
+    body: bytes,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase Storage 오류 (${res.status}): ${text}`);
+  }
+  return `${baseUrl()}/storage/v1/object/public/${bucket}/${path}`;
+}
+
+module.exports = { sbFetch, uploadToStorage };

@@ -773,7 +773,7 @@ function renderSidebarProductGrid() {
     card.className = "sidebar-product-card";
     card.draggable = true;
     card.innerHTML = `
-      <img src="${p.image || placeholderImg()}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" />
+      <img src="/api/image-proxy?id=${p.id}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${placeholderImg()}'" />
       <div class="spc-name">${escapeHtml(p.name)}</div>
     `;
     card.addEventListener("dragstart", (e) => {
