@@ -127,4 +127,30 @@ exports.handler = async () => {
       const data = await queryOnePage(filter, cursor);
       const rows = data.results.map(mapProduct);
       if (rows.length > 0) {
-        await
+        await sbFetch("/products?on_conflict=id", {
+          method: "POST",
+          headers: { Prefer: "resolution=merge-duplicates" },
+          body: JSON.stringify(rows),
+        });
+        total += rows.length;
+      }
+      cursor = data.has_more ? data.next_cursor : undefined;
+    } while (cursor);
+
+    await setLastSyncedAt(syncStartedAt);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ synced: total, since: lastSyncedAt || null }),
+    };
+  } catch (err) {
+    if (err instanceof NotionRateLimitError) {
+      return {
+        statusCode: 429,
+        headers,
+        body: JSON.stringify({ error: "rate_limited", retryAfter: err.retryAfter }),
+      };
+    }
+    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
+  }
+};
