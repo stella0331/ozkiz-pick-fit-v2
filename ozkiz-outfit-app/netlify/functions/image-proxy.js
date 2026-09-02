@@ -35,10 +35,14 @@ async function isMirrored(id) {
       },
       body: JSON.stringify({ search: id, limit: 1 }),
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      console.error("isMirrored: list API failed", res.status, await res.text());
+      return false;
+    }
     const data = await res.json();
     return Array.isArray(data) && data.some((f) => f.name === id);
-  } catch {
+  } catch (err) {
+    console.error("isMirrored: threw", err.message);
     return false;
   }
 }
@@ -58,18 +62,25 @@ exports.handler = async (event) => {
   try {
     const page = await retrievePage(id);
     const notionUrl = getFileUrl(page, "대표이미지");
-    if (!notionUrl) return fallbackResponse();
+    if (!notionUrl) {
+      console.error("image-proxy: no 대표이미지 file url for page", id);
+      return fallbackResponse();
+    }
 
     const imgRes = await fetch(notionUrl);
-    if (!imgRes.ok) return fallbackResponse();
+    if (!imgRes.ok) {
+      console.error("image-proxy: notion image download failed", imgRes.status);
+      return fallbackResponse();
+    }
     const contentType = imgRes.headers.get("content-type") || "image/jpeg";
     const bytes = Buffer.from(await imgRes.arrayBuffer());
     const publicUrl = await uploadToStorage(IMAGE_BUCKET, id, bytes, contentType);
 
     return { statusCode: 302, headers: { Location: publicUrl, "Cache-Control": "no-store" }, body: "" };
-  } catch {
+  } catch (err) {
     // Includes NotionRateLimitError and any storage failure — an occasional
     // missed image is far better than the whole board erroring out.
+    console.error("image-proxy: mirror step failed", err.message);
     return fallbackResponse();
   }
 };
