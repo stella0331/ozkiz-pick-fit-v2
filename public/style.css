@@ -1021,8 +1021,8 @@ button, input {
   padding: 2px;
   text-align: center;
   min-width: 0;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 110px;
+  
+  
 }
 
 .sidebar-product-card:hover { border-color: var(--line); }
