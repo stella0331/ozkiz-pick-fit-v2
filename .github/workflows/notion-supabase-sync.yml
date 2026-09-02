@@ -1,0 +1,31 @@
+name: Notion-Supabase 제품 동기화
+
+on:
+  schedule:
+    # cron은 UTC 기준입니다. 한국시간(KST, UTC+9) 매주 월요일 03:00 = UTC 매주 일요일 18:00
+    - cron: "0 18 * * 0"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 증분 동기화 함수 호출
+        env:
+          SYNC_ENDPOINT_URL: ${{ secrets.SYNC_ENDPOINT_URL }}
+        run: |
+          if [ -z "$SYNC_ENDPOINT_URL" ]; then
+            echo "::error::SYNC_ENDPOINT_URL 시크릿이 설정되지 않았습니다. 저장소 Settings > Secrets and variables > Actions 에서 추가해주세요."
+            exit 1
+          fi
+
+          echo "동기화 요청을 보냅니다: $SYNC_ENDPOINT_URL"
+          http_code=$(curl -s -o response.json -w "%{http_code}" --max-time 60 -X POST "$SYNC_ENDPOINT_URL")
+          echo "응답 코드: $http_code"
+          echo "응답 본문:"
+          cat response.json
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "::error::동기화 실패 (HTTP $http_code)"
+            exit 1
+          fi
