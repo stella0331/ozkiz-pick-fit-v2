@@ -16,9 +16,9 @@ const SYNC_LOG_ID = "products"; // row id in sync_logs for this particular sync 
 const BASE_FILTERS = [
   // 1. 브랜드: 오즈키즈
   { property: "브랜드", select: { equals: "오즈키즈" } },
-  // 2. 개발년도: 2024 ~ 2028
+  // 2. 개발년도: 2024 ~ 2027
   {
-    or: ["2024", "2025", "2026", "2027", "2028"].map((year) => ({
+    or: ["2024", "2025", "2026", "2027"].map((year) => ({
       property: "개발년도",
       select: { equals: year },
     })),
@@ -127,30 +127,4 @@ exports.handler = async () => {
       const data = await queryOnePage(filter, cursor);
       const rows = data.results.map(mapProduct);
       if (rows.length > 0) {
-        await sbFetch("/products?on_conflict=id", {
-          method: "POST",
-          headers: { Prefer: "resolution=merge-duplicates" },
-          body: JSON.stringify(rows),
-        });
-        total += rows.length;
-      }
-      cursor = data.has_more ? data.next_cursor : undefined;
-    } while (cursor);
-
-    await setLastSyncedAt(syncStartedAt);
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ synced: total, since: lastSyncedAt || null }),
-    };
-  } catch (err) {
-    if (err instanceof NotionRateLimitError) {
-      return {
-        statusCode: 429,
-        headers,
-        body: JSON.stringify({ error: "rate_limited", retryAfter: err.retryAfter }),
-      };
-    }
-    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
-  }
-};
+        await
