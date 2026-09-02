@@ -232,3 +232,26 @@ GitHub 저장소 → 상단 **Actions** 탭 → 왼쪽에서 "Notion-Supabase �
 4. Create bucket.
 
 이게 끝입니다. 코드는 이미 이 버킷 이름(`product-images`)을 쓰도록 되어 있어요.
+
+## 부록4. 회사 직원(@openhan.kr)만 접속 가능하도록 구글 로그인 걸기
+
+사이트 접속 시 구글 로그인 화면이 먼저 뜨고, `@openhan.kr` 계정으로 로그인해야만 안의 내용을 볼 수 있습니다. 예전 CopyFlow 프로젝트에서 쓰던 구글 로그인 설정(클라이언트 ID)을 그대로 재사용합니다.
+
+### 설정 (한 번만 하면 됨)
+
+1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) 접속 (CopyFlow 만들 때 쓰신 구글 계정으로 로그인).
+2. 해당 프로젝트 선택 → **API 및 서비스 → 사용자 인증 정보**.
+3. 기존 OAuth 2.0 클라이언트 ID(`755068696639-...`)를 클릭.
+4. **승인된 자바스크립트 원본(Authorized JavaScript origins)** 목록에 이 사이트 주소를 추가:
+   ```
+   https://ozkizpicknfit.netlify.app
+   ```
+   (실제 배포 주소로, `https://`만 넣고 뒤에 `/`는 붙이지 마세요.)
+5. 저장.
+6. 만약 OAuth 동의 화면이 "테스트" 상태라면, **테스트 사용자** 목록에 로그인할 직원들의 실제 이메일을 추가해야 로그인이 돼요. (CopyFlow 때 이미 추가해두셨다면 그대로 재사용됩니다.)
+
+### 참고
+
+- 이 인증은 **클라이언트 사이드 검증**이에요 — 완벽한 보안은 아니고, 개발자 도구를 다룰 줄 아는 사람은 우회할 수 있는 수준의 "허들"이에요. 회사 내부용으로 쓰기엔 충분해요.
+- 로그인 상태는 `sessionStorage`에 저장돼서, 브라우저 탭을 닫으면 초기화되고 다시 로그인해야 해요.
+- `@openhan.kr`이 아닌 다른 도메인 계정도 허용하려면, `public/app.js`에서 `ALLOWED_DOMAINS` 배열에 도메인을 추가하면 됩니다 (예: `["openhan.kr", "ozkiz.com"]`).

@@ -8,88 +8,109 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <button class="back-btn" id="backBtn" hidden>← 목록</button>
-    <div class="brand">
-      <span class="brand-mark" id="brandTitle">오즈키즈 픽앤핏</span>
-      <span class="brand-sub" id="brandSub">OZKIZ PICK &amp; FIT</span>
-    </div>
-    <div class="status" id="syncStatus">노션에서 불러오는 중…</div>
-    <button class="btn-ghost sync-btn" id="syncBtn">↻ 동기화</button>
-  </header>
-
-  <main id="homeView" class="home">
-    <div class="home-head">
-      <h1>프로젝트 목록</h1>
-      <div class="home-head-actions">
-        <button class="btn-primary" id="newConceptBtn">컨셉촬영 코디 만들기</button>
-        <button class="btn-primary" id="newHorizonBtn">호리존촬영 코디 만들기</button>
+  <div id="loginGate" class="login-gate">
+    <div class="login-card">
+      <div class="login-logo">오즈키즈 픽앤핏<span>OZKIZ PICK &amp; FIT</span></div>
+      <p class="login-sub">Google 계정으로 로그인하세요.</p>
+      <div id="googleSignInBtn" class="login-btn-wrap"></div>
+      <p class="login-domain-note"><strong>@openhan.kr</strong> 또는 <strong>@ozkiz.com</strong> 계정만 접근 가능합니다.</p>
+      <div class="login-error" id="loginError" hidden>
+        <strong>접근 권한이 없습니다</strong>
+        <span id="loginErrorMsg"></span>
       </div>
     </div>
+  </div>
 
-    <div class="shoot-form" id="shootForm" hidden>
-      <input type="text" id="shootTitleInput" placeholder="프로젝트 이름을 입력하세요 (예: 26FW 겨울 신상)" />
-      <input type="date" id="shootDateInput" />
-      <div class="shoot-form-actions">
-        <button class="btn-primary" id="submitShootBtn">만들기</button>
-        <button class="btn-ghost" id="cancelShootBtn">취소</button>
+  <div id="appContent" hidden>
+    <header class="topbar">
+      <button class="back-btn" id="backBtn" hidden>← 목록</button>
+      <div class="brand">
+        <span class="brand-mark" id="brandTitle">오즈키즈 픽앤핏</span>
+        <span class="brand-sub" id="brandSub">OZKIZ PICK &amp; FIT</span>
       </div>
-      <p class="save-msg error" id="shootFormMsg"></p>
-    </div>
+      <div class="status" id="syncStatus">노션에서 불러오는 중…</div>
+      <button class="btn-ghost sync-btn" id="syncBtn">↻ 동기화</button>
+      <div class="user-info" id="userInfo">
+        <img class="user-avatar" id="userAvatar" src="" alt="" hidden />
+        <span class="user-email" id="userEmail"></span>
+        <button class="btn-ghost" id="logoutBtn">로그아웃</button>
+      </div>
+    </header>
 
-    <div class="shoot-grid" id="shootGrid"></div>
-  </main>
-
-  <main id="editorView" class="editor2" hidden>
-    <section id="gridStep" class="grid-step">
-      <div class="grid-body">
-        <aside class="product-sidebar" id="productSidebar">
-          <input type="text" id="productSearch" placeholder="제품명 검색" class="sidebar-search" />
-          <div class="chip-group" id="seasonChips"></div>
-          <div class="chip-group" id="categoryChips"></div>
-          <div class="sidebar-tools">
-            <button class="link-btn" id="resetFiltersBtn">필터 초기화</button>
-            <span class="sidebar-count" id="sidebarCount"></span>
-          </div>
-          <div class="sidebar-product-grid" id="sidebarProductGrid"></div>
-        </aside>
-
-        <div class="grid-main">
-          <div class="grid-toolbar">
-            <button class="btn-ghost" id="addModelBtn">+ 모델 추가</button>
-            <button class="btn-ghost" id="addColumnBtn">+ 아이템 추가</button>
-            <button class="btn-ghost" id="addLookRowBtn" hidden>+ 착장 추가</button>
-            <button class="btn-primary" id="saveBoardBtn">코디 저장</button>
-            <span class="save-msg" id="boardSaveMsg"></span>
-          </div>
-
-          <div class="modal-backdrop" id="modelFormBackdrop" hidden>
-            <div class="model-form" id="modelForm">
-              <h3 class="modal-title">모델 추가</h3>
-              <div class="model-form-image-row">
-                <img id="modelImagePreview" class="model-image-preview" src="" alt="" hidden />
-                <input type="file" id="modelImageInput" accept="image/*" />
-              </div>
-              <input type="text" id="modelNameInput" placeholder="모델 정보 (예: 예나 118cm/19kg)" />
-              <div class="model-form-label">의류 사이즈</div>
-              <div class="size-tabs" id="clothingSizeTabs"></div>
-              <div class="model-form-label">신발 사이즈</div>
-              <div class="size-tabs" id="shoeSizeTabs"></div>
-              <div class="shoot-form-actions">
-                <button class="btn-primary" id="submitModelBtn">추가</button>
-                <button class="btn-ghost" id="cancelModelBtn">취소</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid-scroll">
-            <table class="outfit-grid" id="outfitGrid"></table>
-          </div>
+    <main id="homeView" class="home">
+      <div class="home-head">
+        <h1>프로젝트 목록</h1>
+        <div class="home-head-actions">
+          <button class="btn-primary" id="newConceptBtn">컨셉촬영 코디 만들기</button>
+          <button class="btn-primary" id="newHorizonBtn">호리존촬영 코디 만들기</button>
         </div>
       </div>
-    </section>
-  </main>
 
+      <div class="shoot-form" id="shootForm" hidden>
+        <input type="text" id="shootTitleInput" placeholder="프로젝트 이름을 입력하세요 (예: 26FW 겨울 신상)" />
+        <input type="date" id="shootDateInput" />
+        <div class="shoot-form-actions">
+          <button class="btn-primary" id="submitShootBtn">만들기</button>
+          <button class="btn-ghost" id="cancelShootBtn">취소</button>
+        </div>
+        <p class="save-msg error" id="shootFormMsg"></p>
+      </div>
+
+      <div class="shoot-grid" id="shootGrid"></div>
+    </main>
+
+    <main id="editorView" class="editor2" hidden>
+      <section id="gridStep" class="grid-step">
+        <div class="grid-body">
+          <aside class="product-sidebar" id="productSidebar">
+            <input type="text" id="productSearch" placeholder="제품명 검색" class="sidebar-search" />
+            <div class="chip-group" id="seasonChips"></div>
+            <div class="chip-group" id="categoryChips"></div>
+            <div class="sidebar-tools">
+              <button class="link-btn" id="resetFiltersBtn">필터 초기화</button>
+              <span class="sidebar-count" id="sidebarCount"></span>
+            </div>
+            <div class="sidebar-product-grid" id="sidebarProductGrid"></div>
+          </aside>
+
+          <div class="grid-main">
+            <div class="grid-toolbar">
+              <button class="btn-ghost" id="addModelBtn">+ 모델 추가</button>
+              <button class="btn-ghost" id="addColumnBtn">+ 아이템 추가</button>
+              <button class="btn-ghost" id="addLookRowBtn" hidden>+ 착장 추가</button>
+              <button class="btn-primary" id="saveBoardBtn">코디 저장</button>
+              <span class="save-msg" id="boardSaveMsg"></span>
+            </div>
+
+            <div class="modal-backdrop" id="modelFormBackdrop" hidden>
+              <div class="model-form" id="modelForm">
+                <h3 class="modal-title">모델 추가</h3>
+                <div class="model-form-image-row">
+                  <img id="modelImagePreview" class="model-image-preview" src="" alt="" hidden />
+                  <input type="file" id="modelImageInput" accept="image/*" />
+                </div>
+                <input type="text" id="modelNameInput" placeholder="모델 정보 (예: 예나 118cm/19kg)" />
+                <div class="model-form-label">의류 사이즈</div>
+                <div class="size-tabs" id="clothingSizeTabs"></div>
+                <div class="model-form-label">신발 사이즈</div>
+                <div class="size-tabs" id="shoeSizeTabs"></div>
+                <div class="shoot-form-actions">
+                  <button class="btn-primary" id="submitModelBtn">추가</button>
+                  <button class="btn-ghost" id="cancelModelBtn">취소</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-scroll">
+              <table class="outfit-grid" id="outfitGrid"></table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="app.js"></script>
 </body>
 </html>

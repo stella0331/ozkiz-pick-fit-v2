@@ -33,7 +33,7 @@ async function isMirrored(id) {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ search: id, limit: 1 }),
+      body: JSON.stringify({ prefix: "", search: id, limit: 1 }),
     });
     if (!res.ok) {
       console.error("isMirrored: list API failed", res.status, await res.text());

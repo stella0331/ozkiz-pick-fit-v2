@@ -787,7 +787,7 @@ function renderSidebarProductGrid() {
 }
 
 // ---------- Boot ----------
-(async function init() {
+async function initApp() {
   try {
     await Promise.all([loadCatalog(), loadShoots()]);
   } catch (err) {
@@ -796,4 +796,78 @@ function renderSidebarProductGrid() {
   }
   renderShootGrid();
   showView("home");
+}
+
+// ---------- Login gate (Google, restricted to @openhan.kr) ----------
+const GOOGLE_CLIENT_ID = "755068696639-48epod73fvbl3254mgovd6s6p0eb6d6q.apps.googleusercontent.com";
+const ALLOWED_DOMAINS = ["openhan.kr", "ozkiz.com"];
+const SESSION_KEY = "ozkiz_pickfit_user";
+
+function decodeJwt(token) {
+  const payload = token.split(".")[1];
+  const json = decodeURIComponent(
+    atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
+      .split("")
+      .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+      .join("")
+  );
+  return JSON.parse(json);
+}
+
+function showApp(user) {
+  document.getElementById("loginGate").hidden = true;
+  document.getElementById("appContent").hidden = false;
+  const avatar = document.getElementById("userAvatar");
+  if (user.picture) {
+    avatar.src = user.picture;
+    avatar.hidden = false;
+  }
+  document.getElementById("userEmail").textContent = user.email;
+  initApp();
+}
+
+function handleCredentialResponse(response) {
+  const data = decodeJwt(response.credential);
+  const email = data.email || "";
+  const domain = email.split("@")[1] || "";
+  const errorBox = document.getElementById("loginError");
+  if (!ALLOWED_DOMAINS.includes(domain)) {
+    errorBox.hidden = false;
+    document.getElementById("loginErrorMsg").textContent = `${email} 계정은 접근 권한이 없습니다.`;
+    return;
+  }
+  errorBox.hidden = true;
+  const user = { email, name: data.name, picture: data.picture };
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  showApp(user);
+}
+
+document.getElementById("logoutBtn")?.addEventListener("click", () => {
+  sessionStorage.removeItem(SESSION_KEY);
+  location.reload();
+});
+
+(function initLoginGate() {
+  const stored = sessionStorage.getItem(SESSION_KEY);
+  if (stored) {
+    try {
+      showApp(JSON.parse(stored));
+      return;
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  }
+  const tryRender = () => {
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse });
+      google.accounts.id.renderButton(document.getElementById("googleSignInBtn"), {
+        theme: "outline",
+        size: "large",
+        text: "signin_with",
+      });
+    } else {
+      setTimeout(tryRender, 100);
+    }
+  };
+  tryRender();
 })();
