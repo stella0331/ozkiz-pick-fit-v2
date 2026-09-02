@@ -17,20 +17,40 @@ function storagePublicUrl(id) {
   return `${base}/storage/v1/object/public/${IMAGE_BUCKET}/${id}`;
 }
 
+// Checks whether the file already exists in Storage via the authenticated
+// list API (not a plain HEAD on the public URL — some CDN paths return a
+// misleadingly "ok" response for missing public objects, which was silently
+// skipping the mirror-and-upload step every time).
+async function isMirrored(id) {
+  const base = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return false;
+  try {
+    const res = await fetch(`${base}/storage/v1/object/list/${IMAGE_BUCKET}`, {
+      method: "POST",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ search: id, limit: 1 }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return Array.isArray(data) && data.some((f) => f.name === id);
+  } catch {
+    return false;
+  }
+}
+
 exports.handler = async (event) => {
   const id = event.queryStringParameters?.id;
   if (!id) return fallbackResponse();
 
   // 1) Already mirrored to our own storage? Point straight there — this is
   // the common case after the first view, and needs zero Notion API calls.
-  try {
-    const cachedUrl = storagePublicUrl(id);
-    const head = await fetch(cachedUrl, { method: "HEAD" });
-    if (head.ok) {
-      return { statusCode: 302, headers: { Location: cachedUrl, "Cache-Control": "no-store" }, body: "" };
-    }
-  } catch {
-    // fall through to a live fetch below
+  if (await isMirrored(id)) {
+    return { statusCode: 302, headers: { Location: storagePublicUrl(id), "Cache-Control": "no-store" }, body: "" };
   }
 
   // 2) Not mirrored yet — get the (soon-to-expire) Notion URL, download the
