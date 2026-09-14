@@ -8,10 +8,11 @@ const {
   getDate,
   NotionRateLimitError,
 } = require("./_notion");
-const { sbFetch } = require("./_store");
+const { sbFetch, uploadToStorage } = require("./_store");
 
 const PRODUCT_DB_ID = "5d2ae3562c064494b6b1f0fc6469aa8a";
 const SYNC_LOG_ID = "products"; // row id in sync_logs for this particular sync job
+const IMAGE_BUCKET = "product-images";
 
 const BASE_FILTERS = [
   // 1. 브랜드: 오즈키즈
@@ -30,12 +31,17 @@ const BASE_FILTERS = [
       select: { equals: cat },
     })),
   },
-  // 4. 시즌: 봄, 여름, 가을, 겨울, 사계절 (multi_select)
+  // 4. 시즌: 봄, 여름, 가을, 겨울, 사계절 — 또는 시즌 미지정(공란)도 포함.
+  // 미지정 제품은 어떤 시즌 필터를 적용해도 노출돼야 하므로 동기화 단계에서
+  // 걸러지지 않게 is_empty 조건을 추가한다.
   {
-    or: ["봄", "여름", "가을", "겨울", "사계절"].map((season) => ({
-      property: "시즌",
-      multi_select: { contains: season },
-    })),
+    or: [
+      ...["봄", "여름", "가을", "겨울", "사계절"].map((season) => ({
+        property: "시즌",
+        multi_select: { contains: season },
+      })),
+      { property: "시즌", multi_select: { is_empty: true } },
+    ],
   },
   // 5. 진행상태: 7가지 대상 상태
   {
@@ -65,12 +71,32 @@ function buildFilter(lastSyncedAt) {
   return { and };
 }
 
-function mapProduct(page) {
+// Downloads the (soon-to-expire) Notion file URL and re-uploads the actual
+// bytes to our own Supabase Storage bucket, returning a permanent URL. Uses
+// the same "just the product id, no extension" path as image-proxy.js so
+// both share the same cached file. If mirroring fails, falls back to the
+// original Notion URL rather than losing the image entirely.
+async function mirrorImage(notionUrl, productId) {
+  if (!notionUrl) return "";
+  try {
+    const res = await fetch(notionUrl);
+    if (!res.ok) return notionUrl;
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return await uploadToStorage(IMAGE_BUCKET, productId, bytes, contentType);
+  } catch {
+    return notionUrl;
+  }
+}
+
+async function mapProduct(page) {
+  const rawImage = getFileUrl(page, "대표이미지");
+  const image = await mirrorImage(rawImage, page.id);
   return {
     id: page.id,
     name: getTitle(page, "제품명"),
-    image: getFileUrl(page, "대표이미지"),
-    category: getSelect(page, "의류/슈즈/잡화"),
+    image,
+    category: getSelect(page, "복종"), // 화면 필터 칩(세트/하의/상의 등)과 맞추기 위해 "복종" 속성 사용
     gender: getSelect(page, "성별"),
     season: getMultiSelect(page, "시즌"),
     product_type: getSelect(page, "제품유형"),
@@ -125,7 +151,7 @@ exports.handler = async () => {
     let total = 0;
     do {
       const data = await queryOnePage(filter, cursor);
-      const rows = data.results.map(mapProduct);
+      const rows = await Promise.all(data.results.map(mapProduct));
       if (rows.length > 0) {
         await sbFetch("/products?on_conflict=id", {
           method: "POST",

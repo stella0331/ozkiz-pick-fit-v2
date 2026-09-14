@@ -2,6 +2,7 @@ const {
   queryDatabasePage,
   getTitle,
   getSelect,
+  getMultiSelect,
   getStatus,
   getFileUrl,
   getDate,
@@ -39,7 +40,7 @@ function mapProduct(page) {
     image: getFileUrl(page, "대표이미지"),
     category: getSelect(page, "복종"),
     gender: getSelect(page, "성별"),
-    season: getSelect(page, "시즌"),
+    season: getMultiSelect(page, "시즌"), // 시즌은 멀티 셀렉트 속성이라 getSelect가 아닌 getMultiSelect로 가져와야 함
     productType: getSelect(page, "제품유형"),
     status: getStatus(page, "진행상태"),
     arrivalDate: getDate(page, "입고일"),
