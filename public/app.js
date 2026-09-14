@@ -514,13 +514,13 @@ function renderRowCellsHtml(b, rowId, colWidth) {
           </div>
           <div class="cell-item-name">${escapeHtml(p?.name || "")}</div>
           <input type="text" class="cell-item-size" placeholder="사이즈 입력" value="${escapeHtml(it.size || "")}" data-size-cell="${key}" data-size-id="${it.id}" />
-          <label class="cell-item-received">
-            <input type="checkbox" data-received-cell="${key}" data-received-id="${it.id}" ${it.received ? "checked" : ""} />
-            수령 완료
-          </label>
           <label class="cell-item-sample-requested">
             <input type="checkbox" data-sample-cell="${key}" data-sample-id="${it.id}" ${it.sampleRequested ? "checked" : ""} />
             샘플요청
+          </label>
+          <label class="cell-item-received">
+            <input type="checkbox" data-received-cell="${key}" data-received-id="${it.id}" ${it.received ? "checked" : ""} />
+            수령 완료
           </label>
           <input type="text" class="cell-item-note" placeholder="비고" value="${escapeHtml(it.note || "")}" data-note-cell="${key}" data-note-id="${it.id}" />
           ${arrival}
