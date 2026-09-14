@@ -518,6 +518,11 @@ function renderRowCellsHtml(b, rowId, colWidth) {
             <input type="checkbox" data-received-cell="${key}" data-received-id="${it.id}" ${it.received ? "checked" : ""} />
             수령 완료
           </label>
+          <label class="cell-item-sample-requested">
+            <input type="checkbox" data-sample-cell="${key}" data-sample-id="${it.id}" ${it.sampleRequested ? "checked" : ""} />
+            샘플요청
+          </label>
+          <input type="text" class="cell-item-note" placeholder="비고" value="${escapeHtml(it.note || "")}" data-note-cell="${key}" data-note-id="${it.id}" />
           ${arrival}
         </div>`;
       });
@@ -649,6 +654,22 @@ function renderGrid() {
       if (item) item.received = e.target.checked;
     });
   });
+  el.outfitGrid.querySelectorAll("[data-sample-cell]").forEach((checkbox) => {
+    checkbox.addEventListener("change", (e) => {
+      const key = e.target.dataset.sampleCell;
+      const id = e.target.dataset.sampleId;
+      const item = (state.board.cells[key] || []).find((it) => it.id === id);
+      if (item) item.sampleRequested = e.target.checked;
+    });
+  });
+  el.outfitGrid.querySelectorAll("[data-note-cell]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const key = e.target.dataset.noteCell;
+      const id = e.target.dataset.noteId;
+      const item = (state.board.cells[key] || []).find((it) => it.id === id);
+      if (item) item.note = e.target.value;
+    });
+  });
   el.outfitGrid.querySelectorAll(".cell-item").forEach((item) => {
     item.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData(
@@ -702,7 +723,7 @@ function renderGrid() {
       if (!product) return;
       if (!state.board.cells[key]) state.board.cells[key] = [];
       if (!state.board.cells[key].some((it) => it.id === productId)) {
-        state.board.cells[key].push({ id: productId, category: product.category, size: "", received: false });
+        state.board.cells[key].push({ id: productId, category: product.category, size: "", received: false, sampleRequested: false, note: "" });
       }
       renderGrid();
     });
@@ -887,23 +908,23 @@ function handleCredentialResponse(response) {
   }
   errorBox.hidden = true;
   const user = { email, name: data.name, picture: data.picture };
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  localStorage.setItem(SESSION_KEY, JSON.stringify(user));
   showApp(user);
 }
 
 document.getElementById("logoutBtn")?.addEventListener("click", () => {
-  sessionStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_KEY);
   location.reload();
 });
 
 (function initLoginGate() {
-  const stored = sessionStorage.getItem(SESSION_KEY);
+  const stored = localStorage.getItem(SESSION_KEY);
   if (stored) {
     try {
       showApp(JSON.parse(stored));
       return;
     } catch {
-      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(SESSION_KEY);
     }
   }
   const tryRender = () => {
