@@ -507,7 +507,7 @@ function renderRowCellsHtml(b, rowId, colWidth) {
         const arrival = p?.arrivalDate
           ? `<div class="cell-item-arrival">입고일 ${escapeHtml(p.arrivalDate)}</div>`
           : `<div class="cell-item-arrival unset">입고일 미정</div>`;
-        html += `<div class="cell-item">
+        html += `<div class="cell-item" draggable="true" data-source-cell="${key}" data-item-id="${it.id}">
           <div class="cell-item-top">
             <img src="/api/image-proxy?id=${it.id}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${placeholderImg()}'" />
             <button class="thumb-remove" data-remove-cell="${key}" data-remove-id="${it.id}">×</button>
@@ -649,6 +649,17 @@ function renderGrid() {
       if (item) item.received = e.target.checked;
     });
   });
+  el.outfitGrid.querySelectorAll(".cell-item").forEach((item) => {
+    item.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData(
+        "application/x-board-item",
+        JSON.stringify({ sourceKey: item.dataset.sourceCell, itemId: item.dataset.itemId })
+      );
+      e.dataTransfer.effectAllowed = "move";
+      item.classList.add("dragging");
+    });
+    item.addEventListener("dragend", () => item.classList.remove("dragging"));
+  });
   el.outfitGrid.querySelectorAll(".grid-cell").forEach((cell) => {
     cell.addEventListener("dragover", (e) => {
       e.preventDefault();
@@ -658,11 +669,37 @@ function renderGrid() {
     cell.addEventListener("drop", (e) => {
       e.preventDefault();
       cell.classList.remove("drag-over");
+      const key = cellKey(cell.dataset.model, cell.dataset.col);
+
+      // Moving an item already placed on the board (up/down between rows,
+      // or across into a different item column) rather than a fresh drop
+      // from the sidebar.
+      const moveRaw = e.dataTransfer.getData("application/x-board-item");
+      if (moveRaw) {
+        let moveData;
+        try {
+          moveData = JSON.parse(moveRaw);
+        } catch {
+          return;
+        }
+        const { sourceKey, itemId } = moveData || {};
+        if (!sourceKey || !itemId || sourceKey === key) return;
+        const sourceItems = state.board.cells[sourceKey] || [];
+        const idx = sourceItems.findIndex((it) => it.id === itemId);
+        if (idx === -1) return;
+        const [movedItem] = sourceItems.splice(idx, 1);
+        if (!state.board.cells[key]) state.board.cells[key] = [];
+        if (!state.board.cells[key].some((it) => it.id === movedItem.id)) {
+          state.board.cells[key].push(movedItem);
+        }
+        renderGrid();
+        return;
+      }
+
       const productId = e.dataTransfer.getData("text/plain");
       if (!productId) return;
       const product = state.productsById.get(productId);
       if (!product) return;
-      const key = cellKey(cell.dataset.model, cell.dataset.col);
       if (!state.board.cells[key]) state.board.cells[key] = [];
       if (!state.board.cells[key].some((it) => it.id === productId)) {
         state.board.cells[key].push({ id: productId, category: product.category, size: "", received: false });
@@ -734,8 +771,16 @@ function renderChipGroup(container, values, selectedSet) {
   });
 }
 
-const SEASON_CHIPS = ["봄", "가을", "여름", "겨울"];
-const CATEGORY_CHIPS = ["세트", "하의", "상의", "아우터", "원피스", "슬립온", "구두", "운동화"];
+const SEASON_CHIPS = ["봄/가을", "여름", "겨울"];
+
+// "봄/가을" is a combined chip — a product matches it if its season field
+// mentions either 봄 or 가을. Other chips match by simple substring as before.
+function seasonMatchesChip(productSeason, chip) {
+  if (!productSeason || productSeason.includes("사계절")) return true; // unspecified or all-season items show up under any season filter
+  if (chip === "봄/가을") return productSeason.includes("봄") || productSeason.includes("가을");
+  return productSeason.includes(chip);
+}
+const CATEGORY_CHIPS = ["세트", "하의", "상의", "아우터", "원피스", "슬립온", "구두", "운동화", "잡화", "가방"];
 
 function renderSidebarFilters() {
   renderChipGroup(el.seasonChips, SEASON_CHIPS, state.selectedSeasons);
@@ -760,10 +805,14 @@ function renderSidebarProductGrid() {
   let list = state.products;
   if (state.searchText) list = list.filter((p) => p.name.includes(state.searchText));
   if (state.selectedSeasons.size) {
-    list = list.filter((p) => p.season && [...state.selectedSeasons].some((s) => p.season.includes(s)));
+    list = list.filter((p) => [...state.selectedSeasons].some((s) => seasonMatchesChip(p.season, s)));
   }
   if (state.selectedCategories.size) {
-    list = list.filter((p) => p.category && [...state.selectedCategories].some((c) => p.category.includes(c)));
+    list = list.filter((p) =>
+      [...state.selectedCategories].some(
+        (c) => (p.category && p.category.includes(c)) || (p.name && p.name.includes(c))
+      )
+    );
   }
 
   el.sidebarCount.textContent = `${list.length} / ${state.products.length}`;
