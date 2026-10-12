@@ -12,6 +12,8 @@ const state = {
   searchText: "",
   selectedSeasons: new Set(),
   selectedCategories: new Set(),
+
+  ai: {}, // { [rowId]: { score: job, tryon: job } } — AI scoring / try-on results for the open project
 };
 
 const el = {
@@ -58,6 +60,10 @@ const el = {
   sidebarProductGrid: document.getElementById("sidebarProductGrid"),
 
   syncBtn: document.getElementById("syncBtn"),
+
+  exportPdfBtn: document.getElementById("exportPdfBtn"),
+  aiModalBackdrop: document.getElementById("aiModalBackdrop"),
+  aiModal: document.getElementById("aiModal"),
 };
 
 async function fetchJSON(url, options) {
@@ -85,6 +91,139 @@ function placeholderImg() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ---------- Product image loading (queued + retried) ----------
+// The product list holds ~2,000 thumbnails and every one is served by a Netlify function
+// (/api/image-proxy). Letting the browser request them all at once can overwhelm that function
+// (and Notion behind it), and the old onerror handler turned any single failure into a permanent
+// blank square. This loader only requests images near the visible area, at most
+// IMG_MAX_CONCURRENT at a time, drops requests for items scrolled past, times out stuck
+// requests, and retries failures a few times (and tries again when scrolled back into view).
+const IMG_MAX_CONCURRENT = 4;
+const IMG_MAX_ATTEMPTS = 4;
+const IMG_TIMEOUT_MS = 20000;
+const imgQueue = [];
+let imgActive = 0;
+const loadedImageIds = new Set();
+const imgObservers = new Map();
+
+function productImgHtml(id, alt, priority) {
+  const url = `/api/image-proxy?id=${encodeURIComponent(id)}`;
+  const altAttr = escapeHtml(alt || "");
+  // Already fetched once this session: use the browser cache path directly, no queue.
+  if (loadedImageIds.has(id)) return `<img src="${url}" data-img-id="${escapeHtml(id)}" alt="${altAttr}" decoding="async" />`;
+  return `<img class="lazy-img" src="${placeholderImg()}" data-src="${url}" data-img-id="${escapeHtml(id)}"${priority ? ' data-priority="1"' : ""} alt="${altAttr}" decoding="async" />`;
+}
+
+// Double-click a product picture on the board to re-download it from Notion
+// (use after changing the 대표이미지 in Notion).
+async function refreshProductImage(id) {
+  const imgs = document.querySelectorAll(`img[data-img-id="${CSS.escape(id)}"]`);
+  imgs.forEach((i) => (i.style.opacity = "0.4"));
+  try {
+    await fetch(`/api/image-proxy?id=${encodeURIComponent(id)}&refresh=1`, { cache: "reload" });
+    const t = Date.now();
+    imgs.forEach((i) => {
+      i.src = `/api/image-proxy?id=${encodeURIComponent(id)}&t=${t}`;
+    });
+  } catch (_) {
+    /* leave the old picture if the refresh failed */
+  }
+  imgs.forEach((i) => (i.style.opacity = ""));
+}
+
+el.outfitGrid.addEventListener("dblclick", (e) => {
+  const img = e.target.closest("img[data-img-id]");
+  if (img && img.closest(".cell-item-top")) refreshProductImage(img.dataset.imgId);
+});
+
+function enqueueImage(img) {
+  const st = img.dataset.state;
+  if (st === "loaded" || st === "loading" || st === "queued") return;
+  img.dataset.attempt = "0";
+  img.dataset.state = "queued";
+  if (img.dataset.priority) imgQueue.unshift(img);
+  else imgQueue.push(img);
+  pumpImages();
+}
+
+function dequeueImage(img) {
+  if (img.dataset.state !== "queued") return;
+  const i = imgQueue.indexOf(img);
+  if (i !== -1) imgQueue.splice(i, 1);
+  img.dataset.state = "";
+}
+
+function pumpImages() {
+  while (imgActive < IMG_MAX_CONCURRENT && imgQueue.length) {
+    const img = imgQueue.shift();
+    if (!img.isConnected || img.dataset.state !== "queued") continue;
+    loadImage(img);
+  }
+}
+
+function loadImage(img) {
+  imgActive++;
+  img.dataset.state = "loading";
+  const attempt = Number(img.dataset.attempt || 0);
+  const base = img.dataset.src;
+  let finished = false;
+  let timer = null;
+  const done = (ok) => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    img.onload = img.onerror = null;
+    imgActive--;
+    if (ok) {
+      img.dataset.state = "loaded";
+      loadedImageIds.add(img.dataset.imgId);
+    } else if (!img.isConnected) {
+      img.dataset.state = "";
+    } else if (attempt + 1 < IMG_MAX_ATTEMPTS) {
+      img.dataset.attempt = String(attempt + 1);
+      img.dataset.state = "queued";
+      setTimeout(() => {
+        if (img.isConnected && img.dataset.state === "queued") {
+          imgQueue.push(img);
+          pumpImages();
+        }
+      }, 1500 * (attempt + 1));
+    } else {
+      img.src = placeholderImg();
+      img.dataset.state = "failed"; // tried again automatically if it scrolls back into view
+    }
+    pumpImages();
+  };
+  img.onload = () => done(true);
+  img.onerror = () => done(false);
+  timer = setTimeout(() => {
+    img.onload = img.onerror = null;
+    img.src = placeholderImg(); // aborts the stuck request so its slot is freed
+    done(false);
+  }, IMG_TIMEOUT_MS);
+  // Retries add a throwaway query param so a cached error response isn't served again.
+  img.src = attempt ? `${base}${base.includes("?") ? "&" : "?"}r=${attempt}` : base;
+}
+
+// Call after (re)rendering a container. `scrollRoot` is the element that actually scrolls
+// (the sidebar list); pass null for the main page.
+function observeLazyImages(container, scrollRoot) {
+  const old = imgObservers.get(container);
+  if (old) old.disconnect();
+  const imgs = container.querySelectorAll("img.lazy-img");
+  if (imgs.length === 0) return;
+  if (!("IntersectionObserver" in window)) {
+    imgs.forEach(enqueueImage);
+    return;
+  }
+  const obs = new IntersectionObserver(
+    (entries) => entries.forEach((e) => (e.isIntersecting ? enqueueImage(e.target) : dequeueImage(e.target))),
+    { root: scrollRoot || null, rootMargin: "300px 0px" }
+  );
+  imgObservers.set(container, obs);
+  imgs.forEach((img) => obs.observe(img));
 }
 
 // Retries a failed request a few times. If Notion told us how long to wait
@@ -338,6 +477,8 @@ const SHOE_SIZES = ["140", "150", "160", "170", "180", "190", "200"];
 
 async function enterShoot(id) {
   state.currentShootId = id;
+  state.ai = {};
+  el.aiModalBackdrop.hidden = true;
   const shoot = state.shoots.find((s) => s.id === id);
   state.board = {
     id: null,
@@ -374,10 +515,11 @@ async function enterShoot(id) {
   } catch {
     // no saved coordi yet, or the fetch failed — keep the fresh empty one
   }
+  loadAiJobs(id);
 }
 
 // ---------- Manual model add form ----------
-const modelFormState = { clothingSize: "", shoeSize: "", imageDataUrl: "" };
+const modelFormState = { clothingSize: "", shoeSize: "", imageDataUrl: "", editingId: null };
 
 function renderSizeTabs(container, values, selected, onPick) {
   container.innerHTML = "";
@@ -407,11 +549,39 @@ el.addModelBtn.addEventListener("click", () => {
   modelFormState.clothingSize = "";
   modelFormState.shoeSize = "";
   modelFormState.imageDataUrl = "";
+  modelFormState.editingId = null;
+  document.getElementById("modelFormTitle").textContent = "모델 추가";
+  el.submitModelBtn.textContent = "추가";
   el.modelNameInput.value = "";
   el.modelImageInput.value = "";
   el.modelImagePreview.hidden = true;
   el.modelFormBackdrop.hidden = false;
   renderModelForm();
+});
+
+// Double-click a model profile to edit it (same form, pre-filled).
+el.outfitGrid.addEventListener("dblclick", (e) => {
+  const head = e.target.closest("[data-edit-model]");
+  if (!head || e.target.closest("button")) return;
+  const m = state.board.models.find((x) => x.id === head.dataset.editModel);
+  if (!m) return;
+  modelFormState.editingId = m.id;
+  modelFormState.clothingSize = m.clothingSize || "";
+  modelFormState.shoeSize = m.shoeSize || "";
+  modelFormState.imageDataUrl = m.image || "";
+  document.getElementById("modelFormTitle").textContent = "모델 수정";
+  el.submitModelBtn.textContent = "저장";
+  el.modelNameInput.value = m.name || "";
+  el.modelImageInput.value = "";
+  if (m.image) {
+    el.modelImagePreview.src = m.image;
+    el.modelImagePreview.hidden = false;
+  } else {
+    el.modelImagePreview.hidden = true;
+  }
+  el.modelFormBackdrop.hidden = false;
+  renderModelForm();
+  el.modelNameInput.focus();
 });
 
 el.cancelModelBtn.addEventListener("click", () => {
@@ -426,9 +596,12 @@ el.modelImageInput.addEventListener("change", () => {
   const file = el.modelImageInput.files?.[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
-    modelFormState.imageDataUrl = reader.result;
-    el.modelImagePreview.src = reader.result;
+  reader.onload = async () => {
+    // Phone photos are several MB; keeping them whole makes the board too big to save.
+    let url = reader.result;
+    try { url = await downscaleDataUrl(url, 1024); } catch (_) {}
+    modelFormState.imageDataUrl = url;
+    el.modelImagePreview.src = url;
     el.modelImagePreview.hidden = false;
   };
   reader.readAsDataURL(file);
@@ -440,13 +613,22 @@ el.submitModelBtn.addEventListener("click", () => {
     el.modelNameInput.focus();
     return;
   }
-  state.board.models.push({
-    id: "m" + Date.now() + Math.random().toString(36).slice(2, 6),
-    name,
-    image: modelFormState.imageDataUrl,
-    clothingSize: modelFormState.clothingSize,
-    shoeSize: modelFormState.shoeSize,
-  });
+  const editing = modelFormState.editingId && state.board.models.find((x) => x.id === modelFormState.editingId);
+  if (editing) {
+    editing.name = name;
+    editing.image = modelFormState.imageDataUrl;
+    editing.clothingSize = modelFormState.clothingSize;
+    editing.shoeSize = modelFormState.shoeSize;
+  } else {
+    state.board.models.push({
+      id: "m" + Date.now() + Math.random().toString(36).slice(2, 6),
+      name,
+      image: modelFormState.imageDataUrl,
+      clothingSize: modelFormState.clothingSize,
+      shoeSize: modelFormState.shoeSize,
+    });
+  }
+  modelFormState.editingId = null;
   el.modelFormBackdrop.hidden = true;
   renderGrid();
 });
@@ -509,7 +691,7 @@ function renderRowCellsHtml(b, rowId, colWidth) {
           : `<div class="cell-item-arrival unset">입고일 미정</div>`;
         html += `<div class="cell-item" draggable="true" data-source-cell="${key}" data-item-id="${it.id}">
           <div class="cell-item-top">
-            <img src="/api/image-proxy?id=${it.id}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${placeholderImg()}'" />
+            ${productImgHtml(it.id, "", true)}
             <button class="thumb-remove" data-remove-cell="${key}" data-remove-id="${it.id}">×</button>
           </div>
           <div class="cell-item-name">${escapeHtml(p?.name || "")}</div>
@@ -560,7 +742,7 @@ function renderGrid() {
   html += "</tr></thead><tbody>";
 
   b.models.forEach((m) => {
-    html += `<tr><td class="row-head"><div class="row-head-inner">
+    html += `<tr><td class="row-head"><div class="row-head-inner" data-edit-model="${m.id}" title="더블클릭하면 모델 정보를 수정할 수 있어요">
         <img src="${m.image || placeholderImg()}" alt="" decoding="async" />
         <div>
           ${b.category === "호리존 촬영" ? `<div class="row-head-look-label">착장 1</div>` : ""}
@@ -568,7 +750,7 @@ function renderGrid() {
           <div class="row-head-size">${escapeHtml(m.clothingSize ? "의류 " + m.clothingSize : "")}${m.clothingSize && m.shoeSize ? " · " : ""}${escapeHtml(m.shoeSize ? "신발 " + m.shoeSize : "")}</div>
         </div>
         <button class="row-head-remove" data-remove-model="${m.id}" title="모델 제거">×</button>
-      </div></td>`;
+      </div>${rowAiContainerHtml(m.id)}</td>`;
     html += renderRowCellsHtml(b, m.id, colWidth);
     html += "</tr>";
   });
@@ -579,13 +761,14 @@ function renderGrid() {
           <div class="row-head-name">${escapeHtml(row.label)}</div>
         </div>
         <button class="row-head-remove" data-remove-lookrow="${row.id}" title="착장 행 제거">×</button>
-      </div></td>`;
+      </div>${rowAiContainerHtml(row.id)}</td>`;
     html += renderRowCellsHtml(b, row.id, colWidth);
     html += "</tr>";
   });
 
   html += "</tbody>";
   el.outfitGrid.innerHTML = html;
+  observeLazyImages(el.outfitGrid, null);
 
   el.outfitGrid.querySelectorAll("[data-col-input]").forEach((input) => {
     input.addEventListener("input", (e) => {
@@ -738,6 +921,12 @@ el.saveBoardBtn.addEventListener("click", async () => {
     el.saveBoardBtn.disabled = true;
     el.saveBoardBtn.textContent = "저장 중…";
     const shoot = state.shoots.find((s) => s.id === state.currentShootId);
+    // Shrink oversized model photos (already-saved boards may hold full-size originals).
+    for (const m of b.models) {
+      if (m.image && m.image.startsWith("data:") && m.image.length > 250000) {
+        try { m.image = await downscaleDataUrl(m.image, 1024); } catch (_) {}
+      }
+    }
     const payload = {
       shootId: state.currentShootId,
       title: shoot?.title || "이름 없는 코디",
@@ -763,7 +952,10 @@ el.saveBoardBtn.addEventListener("click", async () => {
     }
     el.boardSaveMsg.textContent = "저장했어요.";
   } catch (err) {
-    el.boardSaveMsg.textContent = "저장 실패: " + err.message;
+    const big = /failed to fetch/i.test(err.message || "")
+      ? " (네트워크 연결 또는 저장 데이터 크기 문제일 수 있어요. 잠시 후 다시 시도해주세요)"
+      : "";
+    el.boardSaveMsg.textContent = "저장 실패: " + err.message + big;
     el.boardSaveMsg.className = "save-msg error";
   } finally {
     el.saveBoardBtn.disabled = false;
@@ -843,7 +1035,7 @@ function renderSidebarProductGrid() {
     card.className = "sidebar-product-card";
     card.draggable = true;
     card.innerHTML = `
-      <img src="/api/image-proxy?id=${p.id}" alt="${escapeHtml(p.name)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${placeholderImg()}'" />
+      ${productImgHtml(p.id, p.name, false)}
       <div class="spc-name">${escapeHtml(p.name)}</div>
     `;
     card.addEventListener("dragstart", (e) => {
@@ -854,7 +1046,457 @@ function renderSidebarProductGrid() {
     card.addEventListener("dragend", () => card.classList.remove("dragging"));
     el.sidebarProductGrid.appendChild(card);
   });
+  observeLazyImages(el.sidebarProductGrid, el.sidebarProductGrid);
 }
+
+// ---------- PDF export (board table only, landscape) ----------
+function safeFileName(s) {
+  return String(s || "코디표").replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 60) || "코디표";
+}
+
+async function exportBoardPdf() {
+  const b = state.board;
+  if (!b || b.models.length === 0) {
+    alert("내보낼 코디표가 없어요. 모델과 제품을 먼저 추가해주세요.");
+    return;
+  }
+  if (!window.html2canvas || !window.jspdf) {
+    alert("PDF 라이브러리를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침한 뒤 다시 시도해주세요.");
+    return;
+  }
+  const btn = el.exportPdfBtn;
+  const prevLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "PDF 만드는 중…";
+  try {
+    const table = el.outfitGrid;
+
+    // Board images load through the queued loader, so some may still be placeholders. Fetch
+    // them now (ignoring the queue) and swap them in before capturing.
+    await Promise.all(
+      [...table.querySelectorAll("img[data-src]")]
+        .filter((img) => img.dataset.state !== "loaded" && img.dataset.state !== "loading")
+        .map(async (img) => {
+          const url = img.dataset.src;
+          const ok = await new Promise((resolve) => {
+            const probe = new Image();
+            probe.onload = () => resolve(true);
+            probe.onerror = () => resolve(false);
+            setTimeout(() => resolve(false), 30000);
+            probe.src = url;
+          });
+          if (ok && img.dataset.state !== "loading") {
+            img.src = url;
+            img.dataset.state = "loaded";
+            loadedImageIds.add(img.dataset.imgId);
+          }
+        })
+    );
+
+    // Lazy images below the fold would be captured blank — force-load them all first.
+    const imgs = [...table.querySelectorAll("img")];
+    imgs.forEach((img) => { img.loading = "eager"; });
+    await Promise.all(
+      imgs.map((img) =>
+        img.complete ? null : new Promise((resolve) => { img.onload = img.onerror = resolve; })
+      )
+    );
+
+    // Typed text lives in the .value property, not the HTML attribute, so copy it
+    // over before capturing — otherwise the clone would show stale/empty values.
+    table.querySelectorAll("input[type=text]").forEach((i) => i.setAttribute("value", i.value));
+    table.querySelectorAll("input[type=checkbox]").forEach((c) => {
+      if (c.checked) c.setAttribute("checked", "");
+      else c.removeAttribute("checked");
+    });
+
+    // The capture runs on a cleaned-up clone (empty inputs and buttons removed), so its
+    // rows are shorter than the live table. Row positions must be measured on the clone.
+    let cloneLayout = null;
+    const MAX_CANVAS_PX = 14000; // stay well under browser canvas limits
+    const scale = Math.min(2, MAX_CANVAS_PX / Math.max(table.offsetHeight, 1));
+    const canvas = await window.html2canvas(table, {
+      scale,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      onclone: (doc) => {
+        doc.querySelectorAll(".thumb-remove, .row-head-remove, .col-remove-btn, .row-ai").forEach((n) => n.remove());
+        // Empty slots show a "drag a product here" hint on screen; that's UI guidance, not content,
+        // so leave those cells blank in the PDF.
+        doc.querySelectorAll(".grid-cell-empty").forEach((n) => {
+          n.textContent = "";
+          n.style.border = "none";
+          n.style.background = "transparent";
+        });
+        const toText = (selector, className, prefix) => {
+          doc.querySelectorAll(selector).forEach((inp) => {
+            const v = (inp.value || inp.getAttribute("value") || "").trim();
+            if (!v) { inp.remove(); return; }
+            const d = doc.createElement("div");
+            d.className = className;
+            d.textContent = (prefix || "") + v;
+            inp.replaceWith(d);
+          });
+        };
+        toText(".cell-item-size", "pdf-field", "사이즈 ");
+        toText(".cell-item-note", "pdf-field", "비고 ");
+        doc.querySelectorAll(".col-head input").forEach((inp) => {
+          const d = doc.createElement("div");
+          d.className = "pdf-colhead";
+          d.textContent = inp.value || inp.getAttribute("value") || "";
+          inp.replaceWith(d);
+        });
+        const cloneTable = doc.getElementById("outfitGrid");
+        if (cloneTable) {
+          const firstRow = cloneTable.querySelector("tbody tr");
+          cloneLayout = {
+            height: cloneTable.offsetHeight,
+            headBottom: firstRow ? firstRow.offsetTop : 0, // bottom edge of the column-title row
+            bottoms: [...cloneTable.querySelectorAll("tbody tr")].map((tr) => tr.offsetTop + tr.offsetHeight),
+          };
+        }
+      },
+    });
+
+    // Page layout: A4 landscape, 8mm margins. Cut between rows where possible so a
+    // look (착장) isn't sliced in half; only hard-slice a row taller than one page.
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const margin = 8;
+    const usableW = pdf.internal.pageSize.getWidth() - margin * 2;
+    const usableH = pdf.internal.pageSize.getHeight() - margin * 2;
+    const pageHpx = Math.floor((usableH * canvas.width) / usableW);
+    // css px -> canvas px, using the clone's own height. If measuring failed we simply
+    // have no row boundaries and fall back to plain slicing.
+    const k = cloneLayout && cloneLayout.height ? canvas.height / cloneLayout.height : 1;
+    const boundaries = cloneLayout ? cloneLayout.bottoms.map((v) => Math.round(v * k)) : [];
+
+    // Column titles (아이템1, 아이템2…) are repeated at the top of every page after the first.
+    const headPx = cloneLayout ? Math.round(cloneLayout.headBottom * k) : 0;
+    let y = 0;
+    let pageNo = 0;
+    while (y < canvas.height - 1) {
+      const withHead = pageNo > 0 && headPx > 0 && headPx < pageHpx / 2;
+      const capacity = withHead ? pageHpx - headPx : pageHpx;
+      let end = Math.min(y + capacity, canvas.height);
+      if (end < canvas.height) {
+        const fits = boundaries.filter((v) => v > y + 40 && v <= end);
+        if (fits.length) end = fits[fits.length - 1];
+      }
+      const bodyH = end - y;
+      const top = withHead ? headPx : 0;
+      const slice = document.createElement("canvas");
+      slice.width = canvas.width;
+      slice.height = top + bodyH;
+      const ctx = slice.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, slice.width, slice.height);
+      if (withHead) ctx.drawImage(canvas, 0, 0, canvas.width, headPx, 0, 0, canvas.width, headPx);
+      ctx.drawImage(canvas, 0, y, canvas.width, bodyH, 0, top, canvas.width, bodyH);
+      if (pageNo > 0) pdf.addPage();
+      const h = (slice.height * usableW) / slice.width;
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", margin, margin, usableW, h);
+      y = end;
+      pageNo++;
+    }
+
+    const shoot = state.shoots.find((s) => s.id === state.currentShootId);
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+    pdf.save(`${safeFileName(shoot?.title || b.title)}_코디표_${stamp}.pdf`);
+  } catch (err) {
+    console.error(err);
+    alert("PDF 만들기에 실패했어요: " + (err.message || err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prevLabel;
+  }
+}
+
+el.exportPdfBtn.addEventListener("click", exportBoardPdf);
+
+// ---------- AI features: look scoring (Claude) + virtual try-on image (OpenAI) ----------
+const AI_FN = "/.netlify/functions";
+const SCORE_LABELS = [
+  ["color", "색상 조화"],
+  ["ageGender", "성별·연령 적합"],
+  ["composition", "아이템 구성"],
+  ["trend", "트렌드·경쟁사 비교"],
+];
+let tryonCostConfirmed = false;
+
+function rowModel(rowId) {
+  const b = state.board;
+  return b.models.find((m) => m.id === rowId) || b.models[0] || null;
+}
+
+function rowLabel(rowId) {
+  const b = state.board;
+  const m = b.models.find((x) => x.id === rowId);
+  if (m) return b.category === "호리존 촬영" ? "착장 1" : m.name;
+  return (b.lookRows || []).find((r) => r.id === rowId)?.label || "착장";
+}
+
+function collectRowLook(rowId) {
+  const b = state.board;
+  const items = [];
+  b.columns.forEach((col) => {
+    (b.cells[cellKey(rowId, col.id)] || []).forEach((it) => {
+      const p = state.productsById.get(it.id);
+      items.push({
+        id: it.id,
+        slot: col.label || "",
+        name: p?.name || "",
+        category: p?.category || "",
+        gender: p?.gender || "",
+        season: p?.season || "",
+        size: it.size || "",
+        note: it.note || "",
+      });
+    });
+  });
+  return { model: rowModel(rowId), label: rowLabel(rowId), items };
+}
+
+// Identifies "this exact look" so we can tell when a saved AI result is out of date.
+function rowSignature(rowId) {
+  const b = state.board;
+  const ids = [];
+  b.columns.forEach((col) => (b.cells[cellKey(rowId, col.id)] || []).forEach((it) => ids.push(it.id)));
+  const m = rowModel(rowId);
+  return (m ? m.id : "-") + "|" + ids.sort().join(",");
+}
+
+function downscaleDataUrl(dataUrl, maxSide) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(c.toDataURL("image/jpeg", 0.9));
+    };
+    img.onerror = () => reject(new Error("모델 사진을 읽지 못했어요."));
+    img.src = dataUrl;
+  });
+}
+
+function aiBtnHtml(kind, rowId) {
+  const job = state.ai[rowId]?.[kind];
+  const label = kind === "score" ? "AI 점수" : "입혀보기";
+  const busyLabel = kind === "score" ? "점수 매기는 중…" : "이미지 만드는 중…";
+  const attr = `data-ai-row="${rowId}"`;
+  if (job && (job.status === "queued" || job.status === "running")) {
+    return `<button class="ai-btn busy" disabled>${busyLabel}</button>`;
+  }
+  if (job && job.status === "error") {
+    const why = String(job.error || "알 수 없는 오류").slice(0, 120);
+    return `<button class="ai-btn error" data-ai-act="${kind}" ${attr}>실패 · 다시 시도</button><div class="ai-err">${escapeHtml(why)}</div>`;
+  }
+  if (job && job.status === "done") {
+    const stale = job.signature && job.signature !== rowSignature(rowId);
+    const main =
+      kind === "score"
+        ? `AI ${job.result?.total ?? "-"}점`
+        : "입힌 이미지 보기";
+    return `<div class="ai-done">
+      <button class="ai-chip${stale ? " stale" : ""}" data-ai-act="view-${kind}" ${attr}>${main}${stale ? " · 코디 변경됨" : ""}</button>
+      <button class="ai-redo" data-ai-act="${kind}" ${attr}>다시</button>
+    </div>`;
+  }
+  return `<button class="ai-btn" data-ai-act="${kind}" ${attr}>${label}</button>`;
+}
+
+function rowAiInnerHtml(rowId) {
+  return aiBtnHtml("score", rowId) + aiBtnHtml("tryon", rowId);
+}
+
+function rowAiContainerHtml(rowId) {
+  return `<div class="row-ai" data-ai-box="${rowId}">${rowAiInnerHtml(rowId)}</div>`;
+}
+
+function refreshRowAi(rowId) {
+  const box = el.outfitGrid.querySelector(`[data-ai-box="${rowId}"]`);
+  if (box) box.innerHTML = rowAiInnerHtml(rowId);
+}
+
+async function startAiJob(kind, rowId) {
+  const look = collectRowLook(rowId);
+  if (look.items.length === 0) {
+    alert("이 착장에 제품을 먼저 놓아주세요.");
+    return;
+  }
+  if (kind === "tryon") {
+    if (!look.model || !look.model.image) {
+      alert("입혀볼 모델 사진이 필요해요. \"+ 모델 추가\"에서 모델 사진을 올려주세요.");
+      return;
+    }
+    if (!tryonCostConfirmed) {
+      if (!confirm("AI 이미지 생성은 만들 때마다 OpenAI API 사용료가 나가요. 진행할까요?")) return;
+      tryonCostConfirmed = true;
+    }
+  }
+
+  state.ai[rowId] = { ...(state.ai[rowId] || {}), [kind]: { type: kind, status: "queued", id: null } };
+  refreshRowAi(rowId);
+  const signature = rowSignature(rowId);
+  try {
+    const modelImage = kind === "tryon" ? await downscaleDataUrl(look.model.image, 1280) : "";
+    const res = await fetchJSON(`${AI_FN}/ai-start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: kind,
+        shootId: state.currentShootId,
+        rowId,
+        signature,
+        rowLabel: look.label,
+        boardCategory: state.board.category,
+        model: look.model
+          ? { name: look.model.name, clothingSize: look.model.clothingSize || "", shoeSize: look.model.shoeSize || "" }
+          : null,
+        modelImage,
+        items: look.items,
+      }),
+    });
+    state.ai[rowId][kind] = { type: kind, status: "queued", id: res.id, signature };
+    pollAiJob(rowId, kind, res.id);
+  } catch (err) {
+    // A JSON parse error here means the server answered with an HTML 404 page, i.e. the
+    // function files haven't been deployed yet.
+    const msg =
+      err instanceof SyntaxError
+        ? "서버 함수를 찾지 못했어요. netlify/functions의 ai-*.js 파일이 배포됐는지 확인해주세요."
+        : err.message;
+    state.ai[rowId][kind] = { type: kind, status: "error", error: msg };
+    refreshRowAi(rowId);
+  }
+}
+
+async function pollAiJob(rowId, kind, jobId) {
+  const started = Date.now();
+  while (Date.now() - started < 15 * 60 * 1000) {
+    await sleep(3000);
+    // Stop if the user left this project or started a newer job for the same row.
+    if (state.ai[rowId]?.[kind]?.id !== jobId) return;
+    try {
+      const { job } = await fetchJSON(`${AI_FN}/ai-job?id=${encodeURIComponent(jobId)}`);
+      state.ai[rowId][kind] = job;
+      refreshRowAi(rowId);
+      if (job.status === "done" || job.status === "error") return;
+    } catch {
+      // transient network error — keep polling
+    }
+  }
+  if (state.ai[rowId]?.[kind]?.id === jobId) {
+    state.ai[rowId][kind] = { type: kind, status: "error", id: jobId, error: "시간이 너무 오래 걸려 중단했어요." };
+    refreshRowAi(rowId);
+  }
+}
+
+async function loadAiJobs(shootId) {
+  try {
+    const { jobs } = await fetchJSON(`${AI_FN}/ai-job?shootId=${encodeURIComponent(shootId)}`);
+    if (state.currentShootId !== shootId) return;
+    state.ai = {};
+    (jobs || []).forEach((j) => {
+      state.ai[j.row_id] = state.ai[j.row_id] || {};
+      state.ai[j.row_id][j.type] = j;
+    });
+    renderGrid();
+    Object.entries(state.ai).forEach(([rowId, byType]) =>
+      Object.entries(byType).forEach(([kind, j]) => {
+        if (j.status === "queued" || j.status === "running") pollAiJob(rowId, kind, j.id);
+      })
+    );
+  } catch {
+    // AI table not set up yet or network hiccup — the board works fine without it
+  }
+}
+
+function scoreColorClass(n) {
+  if (n >= 80) return "good";
+  if (n >= 60) return "ok";
+  return "low";
+}
+
+function openAiModal(rowId, kind) {
+  const job = state.ai[rowId]?.[kind];
+  if (!job || job.status !== "done" || !job.result) return;
+  const r = job.result;
+  const label = rowLabel(rowId);
+  const stale = job.signature && job.signature !== rowSignature(rowId);
+  let html = `<button class="ai-modal-close" id="aiModalClose" aria-label="닫기">×</button>`;
+  html += `<h3 class="modal-title">${kind === "score" ? "AI 착장 점수" : "AI 모델 착용 이미지"} · ${escapeHtml(label)}</h3>`;
+  if (stale) html += `<p class="ai-note warn">이 결과를 만든 뒤 코디가 바뀌었어요. 최신 코디로 보려면 "다시"를 눌러주세요.</p>`;
+
+  if (kind === "score") {
+    html += `<div class="ai-total ${scoreColorClass(r.total)}"><span class="ai-total-num">${r.total}</span><span class="ai-total-unit">/ 100</span></div>`;
+    if (r.summary) html += `<p class="ai-summary">${escapeHtml(r.summary)}</p>`;
+    SCORE_LABELS.forEach(([key, name]) => {
+      const n = r.scores?.[key];
+      if (n == null) return;
+      html += `<div class="ai-bar-row">
+        <div class="ai-bar-head"><span>${name}</span><b>${n}</b></div>
+        <div class="ai-bar-track"><div class="ai-bar-fill ${scoreColorClass(n)}" style="width:${Math.max(0, Math.min(100, n))}%"></div></div>
+        <div class="ai-bar-comment">${escapeHtml(r.comments?.[key] || "")}</div>
+      </div>`;
+    });
+    if (r.competitors && r.competitors.length) {
+      html += `<h4 class="ai-sub">경쟁 브랜드 비교</h4><ul class="ai-list">`;
+      r.competitors.forEach((c) => {
+        html += `<li><b>${escapeHtml(c.brand || "")}</b> ${escapeHtml(c.note || "")}</li>`;
+      });
+      html += `</ul>`;
+    }
+    if (r.improvements && r.improvements.length) {
+      html += `<h4 class="ai-sub">개선 제안</h4><ul class="ai-list">`;
+      r.improvements.forEach((t) => (html += `<li>${escapeHtml(t)}</li>`));
+      html += `</ul>`;
+    }
+    if (r.sources && r.sources.length) {
+      html += `<h4 class="ai-sub">참고한 웹 자료</h4><ul class="ai-list small">`;
+      r.sources.forEach((s) => {
+        const safe = /^https?:\/\//.test(s.url || "") ? s.url : "#";
+        html += `<li><a href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.url || "")}</a></li>`;
+      });
+      html += `</ul>`;
+    }
+    html += `<p class="ai-note">${r.webSearch ? "웹 검색으로 최신 트렌드와 경쟁 브랜드를 확인해 평가했어요." : "웹 검색을 쓰지 못해, 이미지와 AI의 기존 지식만으로 평가했어요. 트렌드·경쟁사 항목은 참고용으로만 봐주세요."} AI의 의견이라 실제 판단의 참고 자료로 활용해주세요.</p>`;
+  } else {
+    html += `<div class="ai-tryon-wrap"><img class="ai-tryon-img" src="${escapeHtml(r.imageUrl || "")}" alt="AI가 만든 착용 이미지" /></div>`;
+    html += `<p class="ai-note">AI가 만든 시안이라 제품의 색·프린트·디테일이 실제와 다를 수 있어요. 촬영 전 분위기 확인용으로 써주세요.</p>`;
+    html += `<div class="shoot-form-actions"><a class="btn-primary ai-link" href="${escapeHtml(r.imageUrl || "#")}" target="_blank" rel="noopener noreferrer">새 탭에서 열기 (저장)</a></div>`;
+  }
+  el.aiModal.innerHTML = html;
+  el.aiModalBackdrop.hidden = false;
+  document.getElementById("aiModalClose").addEventListener("click", () => (el.aiModalBackdrop.hidden = true));
+}
+
+el.aiModalBackdrop.addEventListener("click", (e) => {
+  if (e.target === el.aiModalBackdrop) el.aiModalBackdrop.hidden = true;
+});
+
+// One delegated listener — the grid's innerHTML is rebuilt often, so per-button
+// listeners would be lost.
+el.outfitGrid.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-ai-act]");
+  if (!btn) return;
+  e.stopPropagation();
+  const rowId = btn.dataset.aiRow;
+  const act = btn.dataset.aiAct;
+  if (act === "score" || act === "tryon") startAiJob(act, rowId);
+  else if (act === "view-score") openAiModal(rowId, "score");
+  else if (act === "view-tryon") openAiModal(rowId, "tryon");
+});
 
 // ---------- Boot ----------
 async function initApp() {

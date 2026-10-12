@@ -79,12 +79,13 @@
               <button class="btn-ghost" id="addColumnBtn">+ 아이템 추가</button>
               <button class="btn-ghost" id="addLookRowBtn" hidden>+ 착장 추가</button>
               <button class="btn-primary" id="saveBoardBtn">코디 저장</button>
+              <button class="btn-ghost" id="exportPdfBtn">PDF 저장</button>
               <span class="save-msg" id="boardSaveMsg"></span>
             </div>
 
             <div class="modal-backdrop" id="modelFormBackdrop" hidden>
               <div class="model-form" id="modelForm">
-                <h3 class="modal-title">모델 추가</h3>
+                <h3 class="modal-title" id="modelFormTitle">모델 추가</h3>
                 <div class="model-form-image-row">
                   <img id="modelImagePreview" class="model-image-preview" src="" alt="" hidden />
                   <input type="file" id="modelImageInput" accept="image/*" />
@@ -101,6 +102,10 @@
               </div>
             </div>
 
+            <div class="modal-backdrop" id="aiModalBackdrop" hidden>
+              <div class="ai-modal" id="aiModal"></div>
+            </div>
+
             <div class="grid-scroll">
               <table class="outfit-grid" id="outfitGrid"></table>
             </div>
@@ -111,6 +116,8 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
