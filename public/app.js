@@ -1307,10 +1307,15 @@ el.exportPdfBtn.addEventListener("click", exportBoardPdf);
 const AI_FN = "/.netlify/functions";
 const SCORE_LABELS = [
   ["color", "색상 조화"],
-  ["ageGender", "성별·연령 적합"],
   ["composition", "아이템 구성"],
   ["trend", "트렌드·경쟁사 비교"],
 ];
+// Total shown in the UI = mean of the criteria we still show (older saved results also had a
+// "성별·연령 적합" score, which is no longer part of the total).
+function scoreTotal(r) {
+  const vals = SCORE_LABELS.map(([k]) => r?.scores?.[k]).filter((v) => typeof v === "number");
+  return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : r?.total;
+}
 let tryonCostConfirmed = false;
 
 function rowModel(rowId) {
@@ -1392,7 +1397,7 @@ function aiBtnHtml(kind, rowId) {
     const stale = job.signature && job.signature !== rowSignature(rowId);
     const main =
       kind === "score"
-        ? `✨룩 평가 ${job.result?.total ?? "-"}점`
+        ? `✨룩 평가 ${scoreTotal(job.result) ?? "-"}점`
         : "✨피팅 이미지 보기";
     return `<div class="ai-done">
       <button class="ai-chip${stale ? " stale" : ""}" data-ai-act="view-${kind}" ${attr}>${main}${stale ? " · 변경됨" : ""}</button>
@@ -1526,7 +1531,8 @@ function openAiModal(rowId, kind) {
   if (stale) html += `<p class="ai-note warn">이 결과를 만든 뒤 코디가 바뀌었어요. 최신 코디로 보려면 🔄 버튼을 눌러주세요.</p>`;
 
   if (kind === "score") {
-    html += `<div class="ai-total ${scoreColorClass(r.total)}"><span class="ai-total-num">${r.total}</span><span class="ai-total-unit">/ 100</span></div>`;
+    const totalScore = scoreTotal(r);
+    html += `<div class="ai-total ${scoreColorClass(totalScore)}"><span class="ai-total-num">${totalScore}</span><span class="ai-total-unit">/ 100</span></div>`;
     if (r.summary) html += `<p class="ai-summary">${escapeHtml(r.summary)}</p>`;
     SCORE_LABELS.forEach(([key, name]) => {
       const n = r.scores?.[key];
