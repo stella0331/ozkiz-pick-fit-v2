@@ -1537,16 +1537,16 @@ function openAiModal(rowId, kind) {
         <div class="ai-bar-comment">${escapeHtml(r.comments?.[key] || "")}</div>
       </div>`;
     });
+    if (r.improvements && r.improvements.length) {
+      html += `<h4 class="ai-sub">개선 제안</h4><ul class="ai-list">`;
+      r.improvements.forEach((t) => (html += `<li>${escapeHtml(t)}</li>`));
+      html += `</ul>`;
+    }
     if (r.competitors && r.competitors.length) {
       html += `<h4 class="ai-sub">경쟁 브랜드 비교</h4><ul class="ai-list">`;
       r.competitors.forEach((c) => {
         html += `<li><b>${escapeHtml(c.brand || "")}</b> ${escapeHtml(c.note || "")}</li>`;
       });
-      html += `</ul>`;
-    }
-    if (r.improvements && r.improvements.length) {
-      html += `<h4 class="ai-sub">개선 제안</h4><ul class="ai-list">`;
-      r.improvements.forEach((t) => (html += `<li>${escapeHtml(t)}</li>`));
       html += `</ul>`;
     }
     if (r.sources && r.sources.length) {

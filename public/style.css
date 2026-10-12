@@ -1436,8 +1436,8 @@ button, input {
 .ai-modal {
   position: relative;
   width: 100%;
-  max-width: 640px;
-  max-height: 88vh;
+  max-width: 780px;
+  max-height: 90vh;
   overflow-y: auto;
   background: var(--paper-raised);
   border: 1px solid var(--line);
@@ -1459,30 +1459,30 @@ button, input {
 }
 
 .ai-total { display: flex; align-items: baseline; gap: 6px; margin: 10px 0 4px; }
-.ai-total-num { font-size: 44px; font-weight: 800; line-height: 1; }
-.ai-total-unit { font-size: 14px; color: var(--ink-soft); }
+.ai-total-num { font-size: 56px; font-weight: 800; line-height: 1; }
+.ai-total-unit { font-size: 18px; color: var(--ink-soft); }
 .ai-total.good .ai-total-num { color: #2f7a63; }
 .ai-total.ok .ai-total-num { color: #8a6410; }
 .ai-total.low .ai-total-num { color: var(--berry-deep); }
 
-.ai-summary { margin: 0 0 14px; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.ai-summary { margin: 0 0 18px; font-size: 17px; font-weight: 600; line-height: 1.5; }
 
-.ai-bar-row { margin-bottom: 14px; }
-.ai-bar-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
-.ai-bar-track { height: 8px; border-radius: 4px; background: #f0e9dd; overflow: hidden; }
+.ai-bar-row { margin-bottom: 20px; }
+.ai-bar-head { display: flex; justify-content: space-between; font-size: 16px; margin-bottom: 6px; }
+.ai-bar-track { height: 10px; border-radius: 4px; background: #f0e9dd; overflow: hidden; }
 .ai-bar-fill { height: 100%; border-radius: 4px; }
 .ai-bar-fill.good { background: var(--mint); }
 .ai-bar-fill.ok { background: var(--butter); }
 .ai-bar-fill.low { background: var(--berry); }
-.ai-bar-comment { margin-top: 5px; font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
+.ai-bar-comment { margin-top: 8px; font-size: 15.5px; line-height: 1.7; color: var(--ink-soft); }
 
-.ai-sub { font-size: 13px; font-weight: 800; margin: 18px 0 6px; }
-.ai-list { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
-.ai-list li { margin-bottom: 3px; }
-.ai-list.small { font-size: 11.5px; color: var(--ink-soft); word-break: break-all; }
+.ai-sub { font-size: 18px; font-weight: 800; margin: 26px 0 10px; }
+.ai-list { margin: 0; padding-left: 20px; font-size: 15.5px; line-height: 1.7; }
+.ai-list li { margin-bottom: 8px; }
+.ai-list.small { font-size: 14px; color: var(--ink-soft); word-break: break-all; }
 .ai-list a { color: var(--sky); }
 
-.ai-note { margin: 16px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-soft); }
+.ai-note { margin: 20px 0 0; font-size: 13.5px; line-height: 1.6; color: var(--ink-soft); }
 .ai-note.warn { color: #8a6410; background: #fdf3dc; border-radius: 6px; padding: 7px 9px; margin: 6px 0 10px; }
 
 .ai-tryon-wrap { margin-top: 10px; text-align: center; }
