@@ -1102,6 +1102,42 @@ async function exportBoardPdf() {
       )
     );
 
+    // Pictures arrive via /api/image-proxy, which redirects to another host (Supabase). html2canvas
+    // treats the URL as same-origin, loads it without CORS and the canvas ends up "tainted"
+    // (cannot be exported). So fetch each picture ourselves with CORS and hand it over as data.
+    const EMPTY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    const blobToDataUrl = (blob) =>
+      new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+    const pdfSrcCache = new Map();
+    const pdfImgSrc = (url) => {
+      if (!url || url.startsWith("data:")) return Promise.resolve(url);
+      if (!pdfSrcCache.has(url)) {
+        pdfSrcCache.set(
+          url,
+          (async () => {
+            try {
+              // "reload" skips any cached copy that was stored without CORS headers
+              const res = await fetch(url, { mode: "cors", cache: "reload" });
+              if (!res.ok) throw new Error(String(res.status));
+              const blob = await res.blob();
+              if (!/^image\/(?!svg)/.test(blob.type)) return EMPTY_PNG; // fallback placeholder etc.
+              return await blobToDataUrl(blob);
+            } catch (_) {
+              return EMPTY_PNG; // a picture that cannot be read is left blank rather than failing the whole PDF
+            }
+          })()
+        );
+      }
+      return pdfSrcCache.get(url);
+    };
+    const liveImgs = [...table.querySelectorAll("img")];
+    const pdfSrcs = await Promise.all(liveImgs.map((img) => pdfImgSrc(img.currentSrc || img.src)));
+
     // Typed text lives in the .value property, not the HTML attribute, so copy it
     // over before capturing — otherwise the clone would show stale/empty values.
     table.querySelectorAll("input[type=text]").forEach((i) => i.setAttribute("value", i.value));
@@ -1121,6 +1157,15 @@ async function exportBoardPdf() {
       backgroundColor: "#ffffff",
       logging: false,
       onclone: (doc) => {
+        const cloneRoot = doc.getElementById("outfitGrid");
+        if (cloneRoot) {
+          [...cloneRoot.querySelectorAll("img")].forEach((img, i) => {
+            if (pdfSrcs[i]) {
+              img.removeAttribute("srcset");
+              img.src = pdfSrcs[i];
+            }
+          });
+        }
         doc.querySelectorAll(".thumb-remove, .row-head-remove, .col-remove-btn, .row-ai").forEach((n) => n.remove());
         // Empty slots show a "drag a product here" hint on screen; that's UI guidance, not content,
         // so leave those cells blank in the PDF.
