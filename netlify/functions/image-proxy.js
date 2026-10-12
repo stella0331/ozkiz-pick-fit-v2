@@ -12,19 +12,26 @@ function fallbackResponse() {
   };
 }
 
-function storagePublicUrl(id) {
+function storagePublicUrl(id, version) {
   const base = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
-  return `${base}/storage/v1/object/public/${IMAGE_BUCKET}/${id}`;
+  const url = `${base}/storage/v1/object/public/${IMAGE_BUCKET}/${id}`;
+  // The file keeps the same path when its picture is replaced, so the version in the
+  // query string is what tells the CDN and the browser that it is a different image.
+  return version ? `${url}?v=${version}` : url;
 }
 
-// Checks whether the file already exists in Storage via the authenticated
-// list API (not a plain HEAD on the public URL — some CDN paths return a
-// misleadingly "ok" response for missing public objects, which was silently
-// skipping the mirror-and-upload step every time).
-async function isMirrored(id) {
+function redirect(location, cache) {
+  return { statusCode: 302, headers: { Location: location, "Cache-Control": cache }, body: "" };
+}
+
+// Looks the file up in Storage via the authenticated list API (not a plain HEAD on the
+// public URL — some CDN paths return a misleadingly "ok" response for missing public
+// objects). Returns { exists, version } where version changes whenever the file is
+// re-uploaded.
+async function findMirrored(id) {
   const base = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!key) return false;
+  if (!key) return { exists: false, version: "" };
   try {
     const res = await fetch(`${base}/storage/v1/object/list/${IMAGE_BUCKET}`, {
       method: "POST",
@@ -33,32 +40,41 @@ async function isMirrored(id) {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
-            body: JSON.stringify({ prefix: "", search: id, limit: 1 }),
+      body: JSON.stringify({ prefix: "", search: id, limit: 1 }),
     });
     if (!res.ok) {
-      console.error("isMirrored: list API failed", res.status, await res.text());
-      return false;
+      console.error("findMirrored: list API failed", res.status, await res.text());
+      return { exists: false, version: "" };
     }
     const data = await res.json();
-    return Array.isArray(data) && data.some((f) => f.name === id);
+    const file = Array.isArray(data) ? data.find((f) => f.name === id) : null;
+    if (!file) return { exists: false, version: "" };
+    const stamp = Date.parse(file.updated_at || file.last_accessed_at || file.created_at || "");
+    return { exists: true, version: Number.isFinite(stamp) ? String(stamp) : "" };
   } catch (err) {
-    console.error("isMirrored: threw", err.message);
-    return false;
+    console.error("findMirrored: threw", err.message);
+    return { exists: false, version: "" };
   }
 }
 
 exports.handler = async (event) => {
-  const id = event.queryStringParameters?.id;
+  const q = event.queryStringParameters || {};
+  const id = q.id;
   if (!id) return fallbackResponse();
+  const forceRefresh = q.refresh === "1"; // re-download from Notion even if a copy exists
 
-  // 1) Already mirrored to our own storage? Point straight there — this is
-  // the common case after the first view, and needs zero Notion API calls.
-  if (await isMirrored(id)) {
-    return { statusCode: 302, headers: { Location: storagePublicUrl(id), "Cache-Control": "no-store" }, body: "" };
+  // 1) Already mirrored to our own storage? Point straight there — this is the common
+  // case after the first view, and needs zero Notion API calls. A short cache lets the
+  // browser reuse the redirect without hitting this function for every repeat view.
+  if (!forceRefresh) {
+    const found = await findMirrored(id);
+    if (found.exists) {
+      return redirect(storagePublicUrl(id, found.version), "public, max-age=300");
+    }
   }
 
-  // 2) Not mirrored yet — get the (soon-to-expire) Notion URL, download the
-  // actual bytes, and store our own permanent copy before redirecting.
+  // 2) Not mirrored yet (or a refresh was requested) — get the (soon-to-expire) Notion
+  // URL, download the actual bytes, and store our own permanent copy before redirecting.
   try {
     const page = await retrievePage(id);
     const notionUrl = getFileUrl(page, "대표이미지");
@@ -74,9 +90,9 @@ exports.handler = async (event) => {
     }
     const contentType = imgRes.headers.get("content-type") || "image/jpeg";
     const bytes = Buffer.from(await imgRes.arrayBuffer());
-    const publicUrl = await uploadToStorage(IMAGE_BUCKET, id, bytes, contentType);
+    await uploadToStorage(IMAGE_BUCKET, id, bytes, contentType);
 
-    return { statusCode: 302, headers: { Location: publicUrl, "Cache-Control": "no-store" }, body: "" };
+    return redirect(storagePublicUrl(id, String(Date.now())), "no-store");
   } catch (err) {
     // Includes NotionRateLimitError and any storage failure — an occasional
     // missed image is far better than the whole board erroring out.
