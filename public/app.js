@@ -1378,8 +1378,8 @@ function downscaleDataUrl(dataUrl, maxSide) {
 
 function aiBtnHtml(kind, rowId) {
   const job = state.ai[rowId]?.[kind];
-  const label = kind === "score" ? "AI 점수" : "입혀보기";
-  const busyLabel = kind === "score" ? "점수 매기는 중…" : "이미지 만드는 중…";
+  const label = kind === "score" ? "✨룩 평가" : "✨착장 피팅";
+  const busyLabel = kind === "score" ? "평가하는 중…" : "피팅 이미지 만드는 중…";
   const attr = `data-ai-row="${rowId}"`;
   if (job && (job.status === "queued" || job.status === "running")) {
     return `<button class="ai-btn busy" disabled>${busyLabel}</button>`;
@@ -1392,11 +1392,11 @@ function aiBtnHtml(kind, rowId) {
     const stale = job.signature && job.signature !== rowSignature(rowId);
     const main =
       kind === "score"
-        ? `AI ${job.result?.total ?? "-"}점`
-        : "입힌 이미지 보기";
+        ? `✨룩 평가 ${job.result?.total ?? "-"}점`
+        : "✨피팅 이미지 보기";
     return `<div class="ai-done">
-      <button class="ai-chip${stale ? " stale" : ""}" data-ai-act="view-${kind}" ${attr}>${main}${stale ? " · 코디 변경됨" : ""}</button>
-      <button class="ai-redo" data-ai-act="${kind}" ${attr}>다시</button>
+      <button class="ai-chip${stale ? " stale" : ""}" data-ai-act="view-${kind}" ${attr}>${main}${stale ? " · 변경됨" : ""}</button>
+      <button class="ai-redo" data-ai-act="${kind}" ${attr} title="다시 만들기" aria-label="다시 만들기">🔄️</button>
     </div>`;
   }
   return `<button class="ai-btn" data-ai-act="${kind}" ${attr}>${label}</button>`;
@@ -1522,8 +1522,8 @@ function openAiModal(rowId, kind) {
   const label = rowLabel(rowId);
   const stale = job.signature && job.signature !== rowSignature(rowId);
   let html = `<button class="ai-modal-close" id="aiModalClose" aria-label="닫기">×</button>`;
-  html += `<h3 class="modal-title">${kind === "score" ? "AI 착장 점수" : "AI 모델 착용 이미지"} · ${escapeHtml(label)}</h3>`;
-  if (stale) html += `<p class="ai-note warn">이 결과를 만든 뒤 코디가 바뀌었어요. 최신 코디로 보려면 "다시"를 눌러주세요.</p>`;
+  html += `<h3 class="modal-title">${kind === "score" ? "룩 평가" : "착장 피팅"} · ${escapeHtml(label)}</h3>`;
+  if (stale) html += `<p class="ai-note warn">이 결과를 만든 뒤 코디가 바뀌었어요. 최신 코디로 보려면 🔄 버튼을 눌러주세요.</p>`;
 
   if (kind === "score") {
     html += `<div class="ai-total ${scoreColorClass(r.total)}"><span class="ai-total-num">${r.total}</span><span class="ai-total-unit">/ 100</span></div>`;
@@ -1559,7 +1559,7 @@ function openAiModal(rowId, kind) {
     }
     html += `<p class="ai-note">${r.webSearch ? "웹 검색으로 최신 트렌드와 경쟁 브랜드를 확인해 평가했어요." : "웹 검색을 쓰지 못해, 이미지와 AI의 기존 지식만으로 평가했어요. 트렌드·경쟁사 항목은 참고용으로만 봐주세요."} AI의 의견이라 실제 판단의 참고 자료로 활용해주세요.</p>`;
   } else {
-    html += `<div class="ai-tryon-wrap"><img class="ai-tryon-img" src="${escapeHtml(r.imageUrl || "")}" alt="AI가 만든 착용 이미지" /></div>`;
+    html += `<div class="ai-tryon-wrap"><img class="ai-tryon-img" src="${escapeHtml(r.imageUrl || "")}" alt="AI가 만든 착장 피팅 이미지" /></div>`;
     html += `<p class="ai-note">AI가 만든 시안이라 제품의 색·프린트·디테일이 실제와 다를 수 있어요. 촬영 전 분위기 확인용으로 써주세요.</p>`;
     html += `<div class="shoot-form-actions"><a class="btn-primary ai-link" href="${escapeHtml(r.imageUrl || "#")}" target="_blank" rel="noopener noreferrer">새 탭에서 열기 (저장)</a></div>`;
   }
