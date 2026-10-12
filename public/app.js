@@ -781,6 +781,8 @@ function renderGrid() {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const colId = e.target.dataset.colRemove;
+      const col = state.board.columns.find((c) => c.id === colId);
+      if (!confirm(`"${col?.label || "이"}" 열을 삭제할까요?\n이 열에 담긴 제품이 모두 함께 사라져요.`)) return;
       state.board.columns = state.board.columns.filter((c) => c.id !== colId);
       Object.keys(state.board.cells).forEach((k) => {
         if (k.endsWith("__" + colId)) delete state.board.cells[k];
@@ -792,7 +794,8 @@ function renderGrid() {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const rowId = e.target.dataset.removeLookrow;
-      if (!confirm("이 착장 행을 제거할까요?")) return;
+      const lookRow = state.board.lookRows.find((r) => r.id === rowId);
+      if (!confirm(`"${lookRow?.label || "이 착장"}" 행을 삭제할까요?\n이 행에 담긴 제품이 모두 함께 사라져요.`)) return;
       state.board.lookRows = state.board.lookRows.filter((r) => r.id !== rowId);
       Object.keys(state.board.cells).forEach((k) => {
         if (k.startsWith(rowId + "__")) delete state.board.cells[k];
@@ -804,7 +807,8 @@ function renderGrid() {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const modelId = e.target.dataset.removeModel;
-      if (!confirm("이 모델을 표에서 제거할까요?")) return;
+      const model = state.board.models.find((m) => m.id === modelId);
+      if (!confirm(`"${model?.name || "이 모델"}" 모델을 삭제할까요?\n이 모델 행에 담긴 제품이 모두 함께 사라져요.`)) return;
       state.board.models = state.board.models.filter((m) => m.id !== modelId);
       Object.keys(state.board.cells).forEach((k) => {
         if (k.startsWith(modelId + "__")) delete state.board.cells[k];
@@ -817,6 +821,8 @@ function renderGrid() {
       e.stopPropagation();
       const key = e.target.dataset.removeCell;
       const id = e.target.dataset.removeId;
+      const prod = state.productsById.get(id);
+      if (!confirm(`"${prod?.name || "이 제품"}"을(를) 보드에서 삭제할까요?`)) return;
       state.board.cells[key] = (state.board.cells[key] || []).filter((it) => it.id !== id);
       renderGrid();
     });
