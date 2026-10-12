@@ -1054,6 +1054,8 @@ function safeFileName(s) {
   return String(s || "코디표").replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 60) || "코디표";
 }
 
+const PDF_ROWS_PER_PAGE = 3; // looks (착장) per A4 page in the PDF
+
 async function exportBoardPdf() {
   const b = state.board;
   if (!b || b.models.length === 0) {
@@ -1159,11 +1161,21 @@ async function exportBoardPdf() {
       onclone: (doc) => {
         const cloneRoot = doc.getElementById("outfitGrid");
         if (cloneRoot) {
+          const view = doc.defaultView;
           [...cloneRoot.querySelectorAll("img")].forEach((img, i) => {
-            if (pdfSrcs[i]) {
-              img.removeAttribute("srcset");
-              img.src = pdfSrcs[i];
-            }
+            const src = pdfSrcs[i] || img.src;
+            const cs = view.getComputedStyle(img);
+            const rect = img.getBoundingClientRect();
+            // html2canvas ignores object-fit and stretches the picture to fill its box. Draw it as a
+            // background instead (contain / cover behave the same as on the board).
+            const fit = cs.objectFit === "contain" ? "contain" : "cover";
+            const box = doc.createElement("div");
+            box.style.cssText =
+              `display:block;flex:none;width:${rect.width}px;height:${rect.height}px;` +
+              `border-radius:${cs.borderRadius};background-color:${cs.backgroundColor};` +
+              `background-image:url("${src}");background-repeat:no-repeat;` +
+              `background-position:center;background-size:${fit};`;
+            img.replaceWith(box);
           });
         }
         doc.querySelectorAll(".thumb-remove, .row-head-remove, .col-remove-btn, .row-ai").forEach((n) => n.remove());
@@ -1219,17 +1231,7 @@ async function exportBoardPdf() {
 
     // Column titles (아이템1, 아이템2…) are repeated at the top of every page after the first.
     const headPx = cloneLayout ? Math.round(cloneLayout.headBottom * k) : 0;
-    let y = 0;
-    let pageNo = 0;
-    while (y < canvas.height - 1) {
-      const withHead = pageNo > 0 && headPx > 0 && headPx < pageHpx / 2;
-      const capacity = withHead ? pageHpx - headPx : pageHpx;
-      let end = Math.min(y + capacity, canvas.height);
-      if (end < canvas.height) {
-        const fits = boundaries.filter((v) => v > y + 40 && v <= end);
-        if (fits.length) end = fits[fits.length - 1];
-      }
-      const bodyH = end - y;
+    const addSlicePage = (pageNo, bodyTop, bodyH, withHead, scaleMm) => {
       const top = withHead ? headPx : 0;
       const slice = document.createElement("canvas");
       slice.width = canvas.width;
@@ -1238,12 +1240,40 @@ async function exportBoardPdf() {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, slice.width, slice.height);
       if (withHead) ctx.drawImage(canvas, 0, 0, canvas.width, headPx, 0, 0, canvas.width, headPx);
-      ctx.drawImage(canvas, 0, y, canvas.width, bodyH, 0, top, canvas.width, bodyH);
+      ctx.drawImage(canvas, 0, bodyTop, canvas.width, bodyH, 0, top, canvas.width, bodyH);
       if (pageNo > 0) pdf.addPage();
-      const h = (slice.height * usableW) / slice.width;
-      pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", margin, margin, usableW, h);
-      y = end;
-      pageNo++;
+      const w = slice.width * scaleMm;
+      const h = slice.height * scaleMm;
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", margin + (usableW - w) / 2, margin, w, h);
+    };
+
+    if (boundaries.length > 0 && headPx > 0) {
+      // Fixed number of looks (착장 rows) per page, column titles on every page. One common scale
+      // is used so every page looks alike: as large as possible while the fullest page still fits.
+      const groups = [];
+      for (let i = 0; i < boundaries.length; i += PDF_ROWS_PER_PAGE) {
+        const start = i === 0 ? headPx : boundaries[i - 1];
+        const end = boundaries[Math.min(i + PDF_ROWS_PER_PAGE, boundaries.length) - 1];
+        groups.push([start, end]);
+      }
+      const tallest = Math.max(...groups.map(([st, en]) => headPx + (en - st)));
+      const scaleMm = Math.min(usableW / canvas.width, usableH / tallest);
+      groups.forEach(([st, en], idx) => addSlicePage(idx, st, en - st, true, scaleMm));
+    } else {
+      let y = 0;
+      let pageNo = 0;
+      while (y < canvas.height - 1) {
+        const withHead = pageNo > 0 && headPx > 0 && headPx < pageHpx / 2;
+        const capacity = withHead ? pageHpx - headPx : pageHpx;
+        let end = Math.min(y + capacity, canvas.height);
+        if (end < canvas.height) {
+          const fits = boundaries.filter((v) => v > y + 40 && v <= end);
+          if (fits.length) end = fits[fits.length - 1];
+        }
+        addSlicePage(pageNo, y, end - y, withHead, usableW / canvas.width);
+        y = end;
+        pageNo++;
+      }
     }
 
     const shoot = state.shoots.find((s) => s.id === state.currentShootId);
