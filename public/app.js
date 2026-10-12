@@ -1204,6 +1204,18 @@ async function exportBoardPdf() {
           d.textContent = inp.value || inp.getAttribute("value") || "";
           inp.replaceWith(d);
         });
+        // Empty size/note fields were dropped above, so cards in one row end up with different heights.
+        // Stretch each single-card cell to the tallest card of its row so the row looks even.
+        doc.querySelectorAll("#outfitGrid tbody tr").forEach((tr) => {
+          const cards = [...tr.querySelectorAll(".grid-cell-thumbs")]
+            .filter((t) => t.querySelectorAll(".cell-item").length === 1)
+            .map((t) => t.querySelector(".cell-item"));
+          const tallest = Math.max(0, ...cards.map((c) => c.getBoundingClientRect().height));
+          cards.forEach((c) => {
+            c.style.boxSizing = "border-box";
+            c.style.minHeight = tallest + "px";
+          });
+        });
         const cloneTable = doc.getElementById("outfitGrid");
         if (cloneTable) {
           const firstRow = cloneTable.querySelector("tbody tr");
