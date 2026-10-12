@@ -879,6 +879,20 @@ button, input {
   margin-bottom: 6px;
 }
 
+.cell-item-checks {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.cell-item-checks .cell-item-received,
+.cell-item-checks .cell-item-sample-requested {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
 .cell-item-received {
   display: flex;
   align-items: center;
