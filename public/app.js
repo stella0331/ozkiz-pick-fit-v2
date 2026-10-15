@@ -822,13 +822,13 @@ function renderGrid() {
 
   const multiRows = b.models.length + (b.lookRows || []).length > 1;
   const gripHtml = (id) =>
-    multiRows ? `<div class="row-grip" draggable="true" data-row-grip="${id}" title="끌어서 착장 순서를 바꿀 수 있어요">⠿ 순서 이동</div>` : "";
+    multiRows ? `<span class="row-grip" draggable="true" data-row-grip="${id}" title="끌어서 착장 순서를 바꿀 수 있어요">⠿</span>` : "";
 
   b.models.forEach((m) => {
-    html += `<tr data-row-id="${m.id}"><td class="row-head">${gripHtml(m.id)}<div class="row-head-inner" data-edit-model="${m.id}" title="더블클릭하면 모델 정보를 수정할 수 있어요">
+    html += `<tr data-row-id="${m.id}"><td class="row-head"><div class="row-head-inner row-head-stack" data-edit-model="${m.id}" title="더블클릭하면 모델 정보를 수정할 수 있어요">
+        ${b.category === "호리존 촬영" || gripHtml(m.id) ? `<div class="row-head-look-label">${b.category === "호리존 촬영" ? "착장 1" : ""}${gripHtml(m.id)}</div>` : ""}
         <img src="${m.image || placeholderImg()}" alt="" decoding="async" />
         <div>
-          ${b.category === "호리존 촬영" ? `<div class="row-head-look-label">착장 1</div>` : ""}
           <div class="row-head-name">${escapeHtml(m.name)}</div>
           <div class="row-head-size">${escapeHtml(m.clothingSize ? "의류 " + m.clothingSize : "")}${m.clothingSize && m.shoeSize ? " · " : ""}${escapeHtml(m.shoeSize ? "신발 " + m.shoeSize : "")}</div>
         </div>
@@ -839,9 +839,9 @@ function renderGrid() {
   });
 
   (b.lookRows || []).forEach((row) => {
-    html += `<tr data-row-id="${row.id}"><td class="row-head">${gripHtml(row.id)}<div class="row-head-inner">
+    html += `<tr data-row-id="${row.id}"><td class="row-head"><div class="row-head-inner">
         <div>
-          <div class="row-head-name">${escapeHtml(row.label)}</div>
+          <div class="row-head-name">${escapeHtml(row.label)}${gripHtml(row.id)}</div>
         </div>
         <button class="row-head-remove" data-remove-lookrow="${row.id}" title="착장 행 제거">×</button>
       </div>${rowAiContainerHtml(row.id)}</td>`;

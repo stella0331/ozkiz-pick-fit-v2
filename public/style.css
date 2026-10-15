@@ -1527,19 +1527,22 @@ button, input {
 
 /* ---------- Row reorder grip ---------- */
 .row-grip {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--ink-soft);
-  background: #f3ece1;
-  border-radius: 6px;
-  padding: 3px 8px;
-  margin-bottom: 8px;
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 3px;
+  font-size: 15px;
+  line-height: 1;
+  color: #b8ab9b;
   cursor: grab;
   user-select: none;
-  text-align: center;
+  vertical-align: middle;
 }
-.row-grip:hover { background: #eadfce; color: var(--berry-deep); }
+.row-grip:hover { color: var(--berry-deep); }
 .row-grip:active { cursor: grabbing; }
 #outfitGrid tr.row-dragging { opacity: 0.45; }
 #outfitGrid tr.row-drop-before > td { box-shadow: inset 0 3px 0 0 var(--berry-deep); }
 #outfitGrid tr.row-drop-after > td { box-shadow: inset 0 -3px 0 0 var(--berry-deep); }
+
+.row-head-stack { flex-direction: column; align-items: flex-start; gap: 6px; }
+.row-head-stack .row-head-look-label { font-size: 12.5px; margin: 0; }
+.row-head-stack .row-head-look-label .row-grip { margin-left: 4px; }
