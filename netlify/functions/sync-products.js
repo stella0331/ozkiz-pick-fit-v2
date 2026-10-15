@@ -9,6 +9,7 @@ const {
   NotionRateLimitError,
 } = require("./_notion");
 const { sbFetch, uploadToStorage } = require("./_store");
+const { THUMB_PREFIX, makeThumb } = require("./_thumb");
 
 const PRODUCT_DB_ID = "5d2ae3562c064494b6b1f0fc6469aa8a";
 const SYNC_LOG_ID = "products"; // row id in sync_logs for this particular sync job
@@ -83,7 +84,13 @@ async function mirrorImage(notionUrl, productId) {
     if (!res.ok) return notionUrl;
     const contentType = res.headers.get("content-type") || "image/jpeg";
     const bytes = Buffer.from(await res.arrayBuffer());
-    return await uploadToStorage(IMAGE_BUCKET, productId, bytes, contentType);
+    const url = await uploadToStorage(IMAGE_BUCKET, productId, bytes, contentType);
+    // Keep the small reference copy in step with the new original.
+    try {
+      const small = await makeThumb(bytes);
+      if (small) await uploadToStorage(IMAGE_BUCKET, THUMB_PREFIX + productId, small, "image/jpeg");
+    } catch {}
+    return url;
   } catch {
     return notionUrl;
   }
