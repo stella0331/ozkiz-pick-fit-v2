@@ -1,5 +1,8 @@
 {
-  "name": "ozkiz-outfit-app",
+  "name": "ozkiz-pick-fit",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "sharp": "^0.33.5"
+  }
 }
