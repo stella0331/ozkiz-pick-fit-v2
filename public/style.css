@@ -1523,3 +1523,23 @@ button, input {
   color: var(--berry-deep);
   word-break: break-all;
 }
+
+
+/* ---------- Row reorder grip ---------- */
+.row-grip {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: #f3ece1;
+  border-radius: 6px;
+  padding: 3px 8px;
+  margin-bottom: 8px;
+  cursor: grab;
+  user-select: none;
+  text-align: center;
+}
+.row-grip:hover { background: #eadfce; color: var(--berry-deep); }
+.row-grip:active { cursor: grabbing; }
+#outfitGrid tr.row-dragging { opacity: 0.45; }
+#outfitGrid tr.row-drop-before > td { box-shadow: inset 0 3px 0 0 var(--berry-deep); }
+#outfitGrid tr.row-drop-after > td { box-shadow: inset 0 -3px 0 0 var(--berry-deep); }

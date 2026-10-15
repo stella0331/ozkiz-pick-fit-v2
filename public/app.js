@@ -717,6 +717,83 @@ function renderRowCellsHtml(b, rowId, colWidth) {
   return html;
 }
 
+const ROW_DRAG_TYPE = "application/x-board-row";
+
+// Reorder rows (착장). Rows are the model rows followed by the extra look rows. When there are
+// only model rows, the rows themselves are reordered. In the 호리존 layout the first row is
+// tied to the model, so the *contents* (the picked products) move between the fixed row heads
+// instead — what you see is still "착장 1" dropped below "착장 2".
+function moveBoardRow(srcId, targetId, after) {
+  const b = state.board;
+  if (!srcId || !targetId || srcId === targetId) return;
+  const slotIds = [...b.models.map((m) => m.id), ...(b.lookRows || []).map((r) => r.id)];
+  if (!slotIds.includes(srcId) || !slotIds.includes(targetId)) return;
+  const order = slotIds.filter((id) => id !== srcId);
+  const at = order.indexOf(targetId) + (after ? 1 : 0);
+  order.splice(at, 0, srcId);
+  if (order.join("|") === slotIds.join("|")) return;
+
+  if (!(b.lookRows || []).length) {
+    const byId = new Map(b.models.map((m) => [m.id, m]));
+    b.models = order.map((id) => byId.get(id));
+  } else {
+    const old = b.cells;
+    const next = {};
+    Object.keys(old).forEach((k) => {
+      if (!slotIds.some((id) => k.startsWith(id + "__"))) next[k] = old[k];
+    });
+    slotIds.forEach((slot, i) => {
+      const from = order[i];
+      Object.keys(old).forEach((k) => {
+        if (k.startsWith(from + "__")) next[slot + "__" + k.slice(from.length + 2)] = old[k];
+      });
+    });
+    b.cells = next;
+  }
+  renderGrid();
+  el.boardSaveMsg.textContent = "순서를 바꿨어요. 저장 버튼을 눌러야 반영돼요.";
+  el.boardSaveMsg.className = "save-msg";
+}
+
+// ---- Auto-scroll while dragging near the screen edge (so cards can be dragged to rows far below) ----
+(function setupDragAutoScroll() {
+  const ZONE = 110;
+  const MAX = 26;
+  let vy = 0;
+  let vx = 0;
+  let timer = null;
+  let lastDragAt = 0;
+  const stop = () => {
+    vy = 0;
+    vx = 0;
+    if (timer) cancelAnimationFrame(timer);
+    timer = null;
+  };
+  const tick = () => {
+    if (performance.now() - lastDragAt > 250) return stop();
+    if (vy) (document.scrollingElement || document.documentElement).scrollTop += vy;
+    const gs = el.outfitGrid.parentElement;
+    if (vx && gs) gs.scrollLeft += vx;
+    timer = requestAnimationFrame(tick);
+  };
+  document.addEventListener("dragover", (e) => {
+    lastDragAt = performance.now();
+    const h = window.innerHeight;
+    vy = e.clientY < ZONE ? -MAX * (1 - e.clientY / ZONE) : e.clientY > h - ZONE ? MAX * (1 - (h - e.clientY) / ZONE) : 0;
+    vx = 0;
+    const gs = el.outfitGrid.parentElement;
+    if (gs) {
+      const r = gs.getBoundingClientRect();
+      if (e.clientY >= r.top && e.clientY <= r.bottom) {
+        if (e.clientX > r.right - ZONE && e.clientX <= r.right) vx = MAX * (1 - (r.right - e.clientX) / ZONE);
+        else if (e.clientX < r.left + ZONE + 150 && e.clientX >= r.left + 150) vx = -MAX * (1 - (e.clientX - r.left - 150) / ZONE);
+      }
+    }
+    if ((vy || vx) && !timer) timer = requestAnimationFrame(tick);
+  });
+  ["drop", "dragend"].forEach((t) => document.addEventListener(t, stop, true));
+})();
+
 function renderGrid() {
   const b = state.board;
   updateAddModelBtnState();
@@ -743,8 +820,12 @@ function renderGrid() {
   });
   html += "</tr></thead><tbody>";
 
+  const multiRows = b.models.length + (b.lookRows || []).length > 1;
+  const gripHtml = (id) =>
+    multiRows ? `<div class="row-grip" draggable="true" data-row-grip="${id}" title="끌어서 착장 순서를 바꿀 수 있어요">⠿ 순서 이동</div>` : "";
+
   b.models.forEach((m) => {
-    html += `<tr><td class="row-head"><div class="row-head-inner" data-edit-model="${m.id}" title="더블클릭하면 모델 정보를 수정할 수 있어요">
+    html += `<tr data-row-id="${m.id}"><td class="row-head">${gripHtml(m.id)}<div class="row-head-inner" data-edit-model="${m.id}" title="더블클릭하면 모델 정보를 수정할 수 있어요">
         <img src="${m.image || placeholderImg()}" alt="" decoding="async" />
         <div>
           ${b.category === "호리존 촬영" ? `<div class="row-head-look-label">착장 1</div>` : ""}
@@ -758,7 +839,7 @@ function renderGrid() {
   });
 
   (b.lookRows || []).forEach((row) => {
-    html += `<tr><td class="row-head"><div class="row-head-inner">
+    html += `<tr data-row-id="${row.id}"><td class="row-head">${gripHtml(row.id)}<div class="row-head-inner">
         <div>
           <div class="row-head-name">${escapeHtml(row.label)}</div>
         </div>
@@ -861,6 +942,45 @@ function renderGrid() {
       if (item) item.note = e.target.value;
     });
   });
+  // ---- Row (착장) reordering: grab the grip, drop above/below another row ----
+  el.outfitGrid.querySelectorAll("[data-row-grip]").forEach((grip) => {
+    grip.addEventListener("dragstart", (e) => {
+      const tr = grip.closest("tr");
+      e.dataTransfer.setData(ROW_DRAG_TYPE, grip.dataset.rowGrip);
+      e.dataTransfer.effectAllowed = "move";
+      const head = grip.closest("td");
+      if (head && e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(head, 20, 20);
+      if (tr) tr.classList.add("row-dragging");
+    });
+    grip.addEventListener("dragend", () => {
+      el.outfitGrid.querySelectorAll("tr").forEach((r) => r.classList.remove("row-dragging", "row-drop-before", "row-drop-after"));
+    });
+  });
+  el.outfitGrid.querySelectorAll("tbody tr[data-row-id]").forEach((tr) => {
+    const dropSide = (e) => {
+      const r = tr.getBoundingClientRect();
+      return e.clientY > r.top + r.height / 2 ? "after" : "before";
+    };
+    tr.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer.types.includes(ROW_DRAG_TYPE)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const side = dropSide(e);
+      tr.classList.toggle("row-drop-before", side === "before");
+      tr.classList.toggle("row-drop-after", side === "after");
+    });
+    tr.addEventListener("dragleave", (e) => {
+      if (!tr.contains(e.relatedTarget)) tr.classList.remove("row-drop-before", "row-drop-after");
+    });
+    tr.addEventListener("drop", (e) => {
+      if (!e.dataTransfer.types.includes(ROW_DRAG_TYPE)) return;
+      e.preventDefault();
+      const srcId = e.dataTransfer.getData(ROW_DRAG_TYPE);
+      const side = dropSide(e);
+      tr.classList.remove("row-drop-before", "row-drop-after");
+      moveBoardRow(srcId, tr.dataset.rowId, side === "after");
+    });
+  });
   el.outfitGrid.querySelectorAll(".cell-item").forEach((item) => {
     item.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData(
@@ -874,6 +994,7 @@ function renderGrid() {
   });
   el.outfitGrid.querySelectorAll(".grid-cell").forEach((cell) => {
     cell.addEventListener("dragover", (e) => {
+      if (e.dataTransfer.types.includes(ROW_DRAG_TYPE)) return;
       e.preventDefault();
       cell.classList.add("drag-over");
     });
@@ -1168,6 +1289,7 @@ async function exportBoardPdf() {
       logging: false,
       onclone: (doc) => {
         const cloneRoot = doc.getElementById("outfitGrid");
+        doc.querySelectorAll(".row-grip").forEach((n) => n.remove());
         if (cloneRoot) {
           const view = doc.defaultView;
           [...cloneRoot.querySelectorAll("img")].forEach((img, i) => {
