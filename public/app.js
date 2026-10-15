@@ -100,7 +100,7 @@ function sleep(ms) {
 // blank square. This loader only requests images near the visible area, at most
 // IMG_MAX_CONCURRENT at a time, drops requests for items scrolled past, times out stuck
 // requests, and retries failures a few times (and tries again when scrolled back into view).
-const IMG_MAX_CONCURRENT = 4;
+const IMG_MAX_CONCURRENT = 8;
 const IMG_MAX_ATTEMPTS = 4;
 const IMG_TIMEOUT_MS = 20000;
 const imgQueue = [];
@@ -108,12 +108,30 @@ let imgActive = 0;
 const loadedImageIds = new Set();
 const imgObservers = new Map();
 
+// Small reference copies are served straight from storage (no function in between), which is
+// much faster. thumbBase comes from the server once at start; if it is unknown, or a copy
+// does not exist yet, the image falls back to /api/image-proxy, which creates it.
+let thumbBase = "";
+let thumbVer = "";
+async function loadThumbBase() {
+  try {
+    const res = await fetch("/api/image-proxy?info=1");
+    const j = await res.json();
+    thumbBase = j && j.thumbBase ? j.thumbBase : "";
+  } catch (_) {
+    thumbBase = "";
+  }
+}
+
 function productImgHtml(id, alt, priority) {
-  const url = `/api/image-proxy?id=${encodeURIComponent(id)}`;
+  const proxyUrl = `/api/image-proxy?id=${encodeURIComponent(id)}`;
+  const direct = thumbBase ? `${thumbBase}${encodeURIComponent(id)}${thumbVer ? "?v=" + thumbVer : ""}` : "";
+  const url = direct || proxyUrl;
+  const fb = direct ? ` data-fallback="${proxyUrl}"` : "";
   const altAttr = escapeHtml(alt || "");
   // Already fetched once this session: use the browser cache path directly, no queue.
-  if (loadedImageIds.has(id)) return `<img src="${url}" data-img-id="${escapeHtml(id)}" alt="${altAttr}" decoding="async" />`;
-  return `<img class="lazy-img" src="${placeholderImg()}" data-src="${url}" data-img-id="${escapeHtml(id)}"${priority ? ' data-priority="1"' : ""} alt="${altAttr}" decoding="async" />`;
+  if (loadedImageIds.has(id)) return `<img src="${url}"${fb} data-img-id="${escapeHtml(id)}" alt="${altAttr}" decoding="async" />`;
+  return `<img class="lazy-img" src="${placeholderImg()}" data-src="${url}"${fb} data-img-id="${escapeHtml(id)}"${priority ? ' data-priority="1"' : ""} alt="${altAttr}" decoding="async" />`;
 }
 
 // Double-click a product picture on the board to re-download it from Notion
@@ -167,7 +185,9 @@ function loadImage(img) {
   imgActive++;
   img.dataset.state = "loading";
   const attempt = Number(img.dataset.attempt || 0);
-  const base = img.dataset.src;
+  const fallback = img.dataset.fallback || "";
+  // First try the direct small copy; if it is missing or fails, go through the proxy.
+  const base = attempt >= 1 && fallback ? fallback : img.dataset.src;
   let finished = false;
   let timer = null;
   const done = (ok) => {
@@ -189,7 +209,7 @@ function loadImage(img) {
           imgQueue.push(img);
           pumpImages();
         }
-      }, 1500 * (attempt + 1));
+      }, attempt === 0 && fallback ? 0 : 1500 * (attempt + 1));
     } else {
       img.src = placeholderImg();
       img.dataset.state = "failed"; // tried again automatically if it scrolls back into view
@@ -204,7 +224,7 @@ function loadImage(img) {
     done(false);
   }, IMG_TIMEOUT_MS);
   // Retries add a throwaway query param so a cached error response isn't served again.
-  img.src = attempt ? `${base}${base.includes("?") ? "&" : "?"}r=${attempt}` : base;
+  img.src = attempt > 1 || (attempt === 1 && !fallback) ? `${base}${base.includes("?") ? "&" : "?"}r=${attempt}` : base;
 }
 
 // Call after (re)rendering a container. `scrollRoot` is the element that actually scrolls
@@ -275,6 +295,7 @@ async function fetchAllPages(endpoint, label) {
 }
 
 function applyCatalog(products, syncedAt) {
+  thumbVer = syncedAt ? String(Date.parse(syncedAt) || "") : "";
   state.products = products.filter((p) => p.name);
   state.productsById = new Map(state.products.map((p) => [p.id, p]));
   const timeLabel = syncedAt
@@ -1724,7 +1745,7 @@ el.outfitGrid.addEventListener("click", (e) => {
 // ---------- Boot ----------
 async function initApp() {
   try {
-    await Promise.all([loadCatalog(), loadShoots()]);
+    await Promise.all([loadThumbBase(), loadCatalog(), loadShoots()]);
   } catch (err) {
     el.shootGrid.innerHTML = `<div class="empty-note">불러오기 실패: ${escapeHtml(err.message)}</div>`;
     return;
