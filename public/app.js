@@ -703,19 +703,25 @@ function renderRowCellsHtml(b, rowId, colWidth) {
     html += `<td class="grid-cell" style="width:${colWidth}px" data-model="${rowId}" data-col="${col.id}">`;
     if (items.length === 0) {
       html += `<div class="grid-cell-empty">제품을 끌어다 놓으세요</div>`;
+      html += `<button type="button" class="cell-add-image" data-add-image="${key}">＋ 이미지 직접 등록</button>`;
     } else {
       html += `<div class="grid-cell-thumbs">`;
       items.forEach((it) => {
-        const p = state.productsById.get(it.id);
-        const arrival = p?.arrivalDate
+        const isCustom = !!it.custom;
+        const p = isCustom ? { name: it.name || "" } : state.productsById.get(it.id);
+        const arrival = isCustom
+          ? ""
+          : p?.arrivalDate
           ? `<div class="cell-item-arrival">입고일 ${escapeHtml(p.arrivalDate)}</div>`
           : `<div class="cell-item-arrival unset">입고일 미정</div>`;
         html += `<div class="cell-item" draggable="true" data-source-cell="${key}" data-item-id="${it.id}">
           <div class="cell-item-top">
-            ${productImgHtml(it.id, "", true)}
+            ${isCustom ? `<img src="${escapeHtml(it.image || "")}" alt="" decoding="async" />` : productImgHtml(it.id, "", true)}
             <button class="thumb-remove" data-remove-cell="${key}" data-remove-id="${it.id}">×</button>
           </div>
-          <div class="cell-item-name">${escapeHtml(p?.name || "")}</div>
+          ${isCustom
+            ? `<input type="text" class="cell-item-name cell-item-name-input" placeholder="제품명 입력" value="${escapeHtml(it.name || "")}" data-name-cell="${key}" data-name-id="${it.id}" />`
+            : `<div class="cell-item-name">${escapeHtml(p?.name || "")}</div>`}
           <input type="text" class="cell-item-size" placeholder="사이즈 입력" value="${escapeHtml(it.size || "")}" data-size-cell="${key}" data-size-id="${it.id}" />
           <div class="cell-item-checks">
           <label class="cell-item-sample-requested">
@@ -732,10 +738,73 @@ function renderRowCellsHtml(b, rowId, colWidth) {
         </div>`;
       });
       html += `</div>`;
+      html += `<button type="button" class="cell-add-image" data-add-image="${key}">＋ 이미지 직접 등록</button>`;
     }
     html += `</td>`;
   });
   return html;
+}
+
+// ---- Your own pictures (not from the product DB) ----
+let pendingCustomImageKey = null;
+const customImageInput = document.createElement("input");
+customImageInput.type = "file";
+customImageInput.accept = "image/png,image/jpeg,image/webp";
+customImageInput.multiple = true;
+customImageInput.hidden = true;
+document.body.appendChild(customImageInput);
+customImageInput.addEventListener("change", () => {
+  if (pendingCustomImageKey && customImageInput.files.length) addCustomImages(pendingCustomImageKey, customImageInput.files);
+});
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error("파일을 읽지 못했어요."));
+    r.readAsDataURL(file);
+  });
+}
+
+async function addCustomImages(key, fileList) {
+  const files = [...fileList].filter((f) => /^image\/(png|jpe?g|webp)$/.test(f.type));
+  if (!files.length) {
+    el.boardSaveMsg.textContent = "png, jpg, webp 이미지 파일만 등록할 수 있어요.";
+    el.boardSaveMsg.className = "save-msg error";
+    return;
+  }
+  el.boardSaveMsg.className = "save-msg";
+  let done = 0;
+  for (const file of files) {
+    el.boardSaveMsg.textContent = `이미지 등록 중… (${done + 1}/${files.length})`;
+    try {
+      const small = await downscaleDataUrl(await readFileAsDataUrl(file), 900);
+      const res = await fetchJSON("/api/upload-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl: small }),
+      });
+      if (!state.board.cells[key]) state.board.cells[key] = [];
+      state.board.cells[key].push({
+        id: res.id,
+        custom: true,
+        image: res.url,
+        name: file.name.replace(/\.[^.]+$/, ""),
+        category: "",
+        size: "",
+        received: false,
+        sampleRequested: false,
+        note: "",
+      });
+      done++;
+      renderGrid();
+    } catch (err) {
+      el.boardSaveMsg.textContent = "이미지 등록 실패: " + err.message;
+      el.boardSaveMsg.className = "save-msg error";
+      return;
+    }
+  }
+  el.boardSaveMsg.textContent = `이미지 ${done}장을 등록했어요. 저장 버튼을 눌러야 반영돼요.`;
 }
 
 const ROW_DRAG_TYPE = "application/x-board-row";
@@ -925,7 +994,7 @@ function renderGrid() {
       e.stopPropagation();
       const key = e.target.dataset.removeCell;
       const id = e.target.dataset.removeId;
-      const prod = state.productsById.get(id);
+      const prod = state.productsById.get(id) || (state.board.cells[key] || []).find((it) => it.id === id);
       if (!confirm(`"${prod?.name || "이 제품"}"을(를) 보드에서 삭제할까요?`)) return;
       state.board.cells[key] = (state.board.cells[key] || []).filter((it) => it.id !== id);
       renderGrid();
@@ -1002,6 +1071,22 @@ function renderGrid() {
       moveBoardRow(srcId, tr.dataset.rowId, side === "after");
     });
   });
+  el.outfitGrid.querySelectorAll("[data-name-cell]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const key = e.target.dataset.nameCell;
+      const id = e.target.dataset.nameId;
+      const item = (state.board.cells[key] || []).find((it) => it.id === id);
+      if (item) item.name = e.target.value;
+    });
+  });
+  el.outfitGrid.querySelectorAll("[data-add-image]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      pendingCustomImageKey = btn.dataset.addImage;
+      customImageInput.value = "";
+      customImageInput.click();
+    });
+  });
   el.outfitGrid.querySelectorAll(".cell-item").forEach((item) => {
     item.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData(
@@ -1024,6 +1109,12 @@ function renderGrid() {
       e.preventDefault();
       cell.classList.remove("drag-over");
       const key = cellKey(cell.dataset.model, cell.dataset.col);
+
+      // Image files dropped from the computer become your own pictures in this cell.
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        addCustomImages(key, e.dataTransfer.files);
+        return;
+      }
 
       // Moving an item already placed on the board (up/down between rows,
       // or across into a different item column) rather than a fresh drop
@@ -1310,7 +1401,7 @@ async function exportBoardPdf() {
       logging: false,
       onclone: (doc) => {
         const cloneRoot = doc.getElementById("outfitGrid");
-        doc.querySelectorAll(".row-grip").forEach((n) => n.remove());
+        doc.querySelectorAll(".row-grip, .cell-add-image").forEach((n) => n.remove());
         if (cloneRoot) {
           const view = doc.defaultView;
           [...cloneRoot.querySelectorAll("img")].forEach((img, i) => {
@@ -1347,6 +1438,7 @@ async function exportBoardPdf() {
             inp.replaceWith(d);
           });
         };
+        toText(".cell-item-name-input", "cell-item-name", "");
         toText(".cell-item-size", "pdf-field", "사이즈 ");
         toText(".cell-item-note", "pdf-field", "비고 ");
         doc.querySelectorAll(".col-head input").forEach((inp) => {
@@ -1490,8 +1582,8 @@ function collectRowLook(rowId) {
       items.push({
         id: it.id,
         slot: col.label || "",
-        name: p?.name || "",
-        category: p?.category || "",
+        name: p?.name || it.name || "",
+        category: p?.category || it.category || "",
         gender: p?.gender || "",
         season: p?.season || "",
         size: it.size || "",
@@ -1527,7 +1619,7 @@ function downscaleDataUrl(dataUrl, maxSide) {
       ctx.drawImage(img, 0, 0, w, h);
       resolve(c.toDataURL("image/jpeg", 0.9));
     };
-    img.onerror = () => reject(new Error("모델 사진을 읽지 못했어요."));
+    img.onerror = () => reject(new Error("이미지를 읽지 못했어요."));
     img.src = dataUrl;
   });
 }
