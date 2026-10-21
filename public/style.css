@@ -828,6 +828,7 @@ button, input {
   align-items: center;
   justify-content: center;
   height: 76px;
+  margin: 8px 8px 0;
   color: var(--ink-soft);
   font-size: 12.5px;
   text-align: center;
@@ -1554,9 +1555,9 @@ button, input {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: 100%;
+  width: calc(100% - 16px);
   height: 76px;
-  margin-top: 6px;
+  margin: 6px 8px 8px;
   padding: 4px;
   font: inherit;
   font-size: 12.5px;

@@ -703,7 +703,7 @@ function renderRowCellsHtml(b, rowId, colWidth) {
     html += `<td class="grid-cell" style="width:${colWidth}px" data-model="${rowId}" data-col="${col.id}">`;
     if (items.length === 0) {
       html += `<div class="grid-cell-empty">제품 끌어오기</div>`;
-      html += `<button type="button" class="cell-add-image" data-add-image="${key}">이미지 직접 등록</button>`;
+      html += `<button type="button" class="cell-add-image" data-add-image="${key}">제품 직접 등록</button>`;
     } else {
       html += `<div class="grid-cell-thumbs">`;
       items.forEach((it) => {
