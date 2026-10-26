@@ -886,6 +886,9 @@ function moveBoardRow(srcId, targetId, after) {
 function renderGrid() {
   const b = state.board;
   updateAddModelBtnState();
+  // Keep the extra look rows numbered in order (착장 2, 3, 4…) — the model row is 착장 1 —
+  // so deleting or adding a look never leaves gaps like 1, 2, 4, 5.
+  (b.lookRows || []).forEach((r, i) => (r.label = "착장 " + (i + 2)));
 
   if (b.models.length === 0) {
     el.outfitGrid.innerHTML = `<tr><td class="empty-note">"+ 모델 추가"로 모델을 먼저 추가해주세요.</td></tr>`;
