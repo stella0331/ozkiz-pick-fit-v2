@@ -42,7 +42,10 @@ async function loadProductImage(id) {
   const base = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
   const first = await fetchImage(`${base}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(id)}`);
   if (first) return first;
-  const site = process.env.URL;
+  const site =
+    process.env.URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "") ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
   if (site) return fetchImage(`${site}/api/image-proxy?id=${encodeURIComponent(id)}`);
   return null;
 }
@@ -328,20 +331,18 @@ async function runTryon(job) {
 }
 
 // ---------- entry ----------
-exports.handler = async (event) => {
-  let jobId = "";
+async function runJob(jobId) {
   try {
-    jobId = String(JSON.parse(event.body || "{}").jobId || "");
     if (!jobId) return;
     const rows = await sbFetch(`/ai_jobs?id=eq.${encodeURIComponent(jobId)}&select=*`);
     const job = rows && rows[0];
-    if (!job || job.status !== "queued") return; // already handled (e.g. a Netlify retry)
+    if (!job || job.status !== "queued") return; // already handled (e.g. a retry)
 
     await patchJob(jobId, { status: "running" });
     const result = job.type === "score" ? await runScore(job) : await runTryon(job);
     await patchJob(jobId, { status: "done", result });
   } catch (err) {
-    console.error("ai-run-background failed:", err);
+    console.error("ai job failed:", err);
     if (jobId) {
       try {
         await patchJob(jobId, { status: "error", error: String(err.message || err).slice(0, 500) });
@@ -350,4 +351,17 @@ exports.handler = async (event) => {
       }
     }
   }
+}
+
+// Netlify background-function entry (never throws, or Netlify would retry the job).
+exports.handler = async (event) => {
+  let jobId = "";
+  try {
+    jobId = String(JSON.parse(event.body || "{}").jobId || "");
+  } catch {
+    return;
+  }
+  await runJob(jobId);
 };
+
+exports.runJob = runJob;

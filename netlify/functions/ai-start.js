@@ -33,10 +33,10 @@ exports.handler = async (event) => {
 
     // Fail fast with a readable message instead of failing later in the background.
     if (type === "score" && !process.env.ANTHROPIC_API_KEY) {
-      return json(500, { error: "ANTHROPIC_API_KEY 환경변수가 설정되지 않았어요. Netlify 환경변수에 등록해주세요." });
+      return json(500, { error: "ANTHROPIC_API_KEY 환경변수가 설정되지 않았어요. 호스팅(Vercel) 환경변수에 등록해주세요." });
     }
     if (type === "tryon" && !process.env.OPENAI_API_KEY) {
-      return json(500, { error: "OPENAI_API_KEY 환경변수가 설정되지 않았어요. Netlify 환경변수에 등록해주세요." });
+      return json(500, { error: "OPENAI_API_KEY 환경변수가 설정되지 않았어요. 호스팅(Vercel) 환경변수에 등록해주세요." });
     }
 
     // Rate limit: total jobs created in the last hour.
@@ -97,7 +97,20 @@ exports.handler = async (event) => {
       ]),
     });
 
-    // Fire the background function. It answers 202 right away; only the job id is
+    if (process.env.VERCEL) {
+      // Vercel: run the job in this same function after the response is sent (waitUntil keeps it
+      // alive for up to its maxDuration), instead of calling a separate background function.
+      const { runJob } = require("./ai-run-background");
+      const work = runJob(jobId);
+      try {
+        require("@vercel/functions").waitUntil(work);
+      } catch (_) {
+        /* not on Vercel's runtime — the promise simply keeps running */
+      }
+      return json(200, { id: jobId });
+    }
+
+    // Netlify: fire the background function. It answers 202 right away; only the job id is
     // sent because background functions have a small request-payload limit.
     const siteUrl = process.env.URL || `https://${event.headers.host}`;
     const trigger = await fetch(`${siteUrl}/.netlify/functions/ai-run-background`, {

@@ -1549,7 +1549,7 @@ async function exportBoardPdf() {
 el.exportPdfBtn.addEventListener("click", exportBoardPdf);
 
 // ---------- AI features: look scoring (Claude) + virtual try-on image (OpenAI) ----------
-const AI_FN = "/.netlify/functions";
+const AI_FN = "/api"; // works on Vercel, and on Netlify through its /api/* redirect
 const SCORE_LABELS = [
   ["color", "색상 조화"],
   ["composition", "아이템 구성"],
