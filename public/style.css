@@ -657,8 +657,8 @@ button, input {
 
 /* ---------- Editor v2: model pick + grid ---------- */
 .editor2 {
-  padding: 22px 24px 60px;
-  max-width: 1600px;
+  padding: 16px 12px 60px;
+  max-width: none; /* use the whole screen width — only a small margin on each side */
   margin: 0 auto;
 }
 
