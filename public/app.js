@@ -722,7 +722,10 @@ function renderRowCellsHtml(b, rowId, colWidth) {
           ${isCustom
             ? `<input type="text" class="cell-item-name cell-item-name-input" placeholder="제품명 입력" value="${escapeHtml(it.name || "")}" data-name-cell="${key}" data-name-id="${it.id}" />`
             : `<div class="cell-item-name">${escapeHtml(p?.name || "")}</div>`}
-          <input type="text" class="cell-item-size" placeholder="사이즈 입력" value="${escapeHtml(it.size || "")}" data-size-cell="${key}" data-size-id="${it.id}" />
+          <div class="cell-item-attrs">
+            <input type="text" class="cell-item-color" placeholder="컬러 입력" value="${escapeHtml(it.color || "")}" data-color-cell="${key}" data-color-id="${it.id}" />
+            <input type="text" class="cell-item-size" placeholder="사이즈 입력" value="${escapeHtml(it.size || "")}" data-size-cell="${key}" data-size-id="${it.id}" />
+          </div>
           <div class="cell-item-checks">
           <label class="cell-item-sample-requested">
             <input type="checkbox" data-sample-cell="${key}" data-sample-id="${it.id}" ${it.sampleRequested ? "checked" : ""} />
@@ -790,6 +793,7 @@ async function addCustomImages(key, fileList) {
         image: res.url,
         name: file.name.replace(/\.[^.]+$/, ""),
         category: "",
+        color: "",
         size: "",
         received: false,
         sampleRequested: false,
@@ -888,8 +892,31 @@ function moveBoardRow(srcId, targetId, after) {
   ["drop", "dragend"].forEach((t) => document.addEventListener(t, stop, true));
 })();
 
+// Cards used to have one "사이즈" box where people typed things like "레드 190". Now there are two
+// boxes (컬러 / 사이즈), so old cards are split once: a trailing size ("190", "120", "M", "FREE")
+// goes to 사이즈 and the rest to 컬러. Anything that does not clearly split is left as it was.
+const SIZE_TOKEN = /^(?:(.*\S)\s+)?(\d{2,3}(?:[-~/]\d{2,3})?|XXS|XS|S|M|L|XL|XXL|FREE|프리)$/i;
+function splitColorSize(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return { color: "", size: "" };
+  const m = SIZE_TOKEN.exec(text);
+  if (m) return { color: (m[1] || "").trim(), size: m[2] };
+  return /\d/.test(text) ? { color: "", size: text } : { color: text, size: "" };
+}
+function normalizeColorSize(board) {
+  Object.values(board.cells || {}).forEach((items) =>
+    (items || []).forEach((it) => {
+      if (it.color !== undefined) return;
+      const { color, size } = splitColorSize(it.size);
+      it.color = color;
+      it.size = size;
+    })
+  );
+}
+
 function renderGrid() {
   const b = state.board;
+  normalizeColorSize(b);
   updateAddModelBtnState();
   // Keep the extra look rows numbered in order (착장 2, 3, 4…) — the model row is 착장 1 —
   // so deleting or adding a look never leaves gaps like 1, 2, 4, 5.
@@ -1005,6 +1032,14 @@ function renderGrid() {
       if (!confirm(`"${prod?.name || "이 제품"}"을(를) 보드에서 삭제할까요?`)) return;
       state.board.cells[key] = (state.board.cells[key] || []).filter((it) => it.id !== id);
       renderGrid();
+    });
+  });
+  el.outfitGrid.querySelectorAll("[data-color-cell]").forEach((input) => {
+    input.addEventListener("input", (e) => {
+      const key = e.target.dataset.colorCell;
+      const id = e.target.dataset.colorId;
+      const item = (state.board.cells[key] || []).find((it) => it.id === id);
+      if (item) item.color = e.target.value;
     });
   });
   el.outfitGrid.querySelectorAll("[data-size-cell]").forEach((input) => {
@@ -1159,7 +1194,7 @@ function renderGrid() {
       if (!product) return;
       if (!state.board.cells[key]) state.board.cells[key] = [];
       if (!state.board.cells[key].some((it) => it.id === productId)) {
-        state.board.cells[key].push({ id: productId, category: product.category, size: "", received: false, sampleRequested: false, note: "" });
+        state.board.cells[key].push({ id: productId, category: product.category, color: "", size: "", received: false, sampleRequested: false, note: "" });
       }
       renderGrid();
     });
@@ -1614,7 +1649,20 @@ async function exportBoardPdfInner() {
           });
         };
         toText(".cell-item-name-input", "cell-item-name", "");
-        toText(".cell-item-size", "pdf-field", "사이즈 ");
+        doc.querySelectorAll(".cell-item-attrs").forEach((box) => {
+          const val = (sel) => {
+            const inp = box.querySelector(sel);
+            return inp ? (inp.value || inp.getAttribute("value") || "").trim() : "";
+          };
+          const parts = [];
+          if (val(".cell-item-color")) parts.push("컬러 " + val(".cell-item-color"));
+          if (val(".cell-item-size")) parts.push("사이즈 " + val(".cell-item-size"));
+          if (!parts.length) return box.remove();
+          const d = doc.createElement("div");
+          d.className = "pdf-field";
+          d.textContent = parts.join("  ·  ");
+          box.replaceWith(d);
+        });
         toText(".cell-item-note", "pdf-field", "비고 ");
         doc.querySelectorAll(".col-head input").forEach((inp) => {
           const d = doc.createElement("div");
@@ -1762,6 +1810,7 @@ function collectRowLook(rowId) {
         gender: p?.gender || "",
         season: p?.season || "",
         size: it.size || "",
+        color: it.color || "",
         note: it.note || "",
       });
     });
