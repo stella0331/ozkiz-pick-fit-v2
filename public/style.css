@@ -1619,3 +1619,5 @@ button, input {
 #zoomFitBtn { border-left: 1px solid var(--line); border-radius: 0 999px 999px 0; margin-left: 2px; }
 body.space-pan, body.space-pan * { cursor: grab !important; }
 body.panning, body.panning * { cursor: grabbing !important; user-select: none !important; }
+
+.arrival-flag[hidden] { display: none; }

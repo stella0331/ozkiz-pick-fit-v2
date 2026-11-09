@@ -709,11 +709,17 @@ function renderRowCellsHtml(b, rowId, colWidth) {
       items.forEach((it) => {
         const isCustom = !!it.custom;
         const p = isCustom ? { name: it.name || "" } : state.productsById.get(it.id);
+        // ‼️ marks products that are not in by the shoot date: arrival after the shoot date, or no
+        // arrival date yet. Once 수령 완료 is checked (e.g. the design team handed over the sample
+        // early) the mark is hidden.
+        const shootDate = (state.shoots.find((s) => s.id === state.currentShootId) || {}).shootDate || "";
+        const arrivesLate = !!(p?.arrivalDate && shootDate && String(p.arrivalDate).slice(0, 10) > String(shootDate).slice(0, 10));
+        const flag = (tip) => `<span class="arrival-flag" title="${tip}"${it.received ? " hidden" : ""}>‼️ </span>`;
         const arrival = isCustom
           ? ""
           : p?.arrivalDate
-          ? `<div class="cell-item-arrival">입고일 ${escapeHtml(p.arrivalDate)}</div>`
-          : `<div class="cell-item-arrival unset">입고일 미정</div>`;
+          ? `<div class="cell-item-arrival">${arrivesLate ? flag("촬영일보다 입고일이 늦어요") : ""}입고일 ${escapeHtml(p.arrivalDate)}</div>`
+          : `<div class="cell-item-arrival unset">${flag("입고일이 아직 정해지지 않았어요")}입고일 미정</div>`;
         html += `<div class="cell-item" draggable="true" data-source-cell="${key}" data-item-id="${it.id}">
           <div class="cell-item-top">
             ${isCustom ? `<img src="${escapeHtml(it.image || "")}" alt="" decoding="async" />` : productImgHtml(it.id, "", true)}
@@ -1056,6 +1062,8 @@ function renderGrid() {
       const id = e.target.dataset.receivedId;
       const item = (state.board.cells[key] || []).find((it) => it.id === id);
       if (item) item.received = e.target.checked;
+      const flag = e.target.closest(".cell-item")?.querySelector(".arrival-flag");
+      if (flag) flag.hidden = e.target.checked;
     });
   });
   el.outfitGrid.querySelectorAll("[data-sample-cell]").forEach((checkbox) => {
