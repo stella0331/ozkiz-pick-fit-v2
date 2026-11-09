@@ -806,6 +806,11 @@ async function addCustomImages(key, fileList) {
   el.boardSaveMsg.textContent = `이미지 ${done}장을 등록했어요. 저장 버튼을 눌러야 반영돼요.`;
 }
 
+// Restore card dragging once the mouse is released (see the text-box handling above).
+document.addEventListener("mouseup", () => {
+  document.querySelectorAll('.cell-item[draggable="false"]').forEach((i) => i.setAttribute("draggable", "true"));
+});
+
 const ROW_DRAG_TYPE = "application/x-board-row";
 
 // Reorder rows (착장). Rows are the model rows followed by the extra look rows. When there are
@@ -1099,6 +1104,11 @@ function renderGrid() {
       item.classList.add("dragging");
     });
     item.addEventListener("dragend", () => item.classList.remove("dragging"));
+    // The whole card is draggable, which stops text from being selected by dragging inside its
+    // text boxes. Turn card-dragging off while the mouse is pressed inside a text box.
+    item.querySelectorAll('input:not([type="checkbox"]), textarea').forEach((field) => {
+      field.addEventListener("mousedown", () => item.setAttribute("draggable", "false"));
+    });
   });
   el.outfitGrid.querySelectorAll(".grid-cell").forEach((cell) => {
     cell.addEventListener("dragover", (e) => {
@@ -1292,6 +1302,169 @@ function renderSidebarProductGrid() {
   observeLazyImages(el.sidebarProductGrid, el.sidebarProductGrid);
 }
 
+// ---------- Board zoom & pan (like Photoshop / Illustrator) ----------
+//   Alt + mouse wheel, or Ctrl + wheel     → zoom around the pointer
+//   Ctrl + "+" / Ctrl + "-" / Ctrl + 0      → zoom in / out / back to 100%
+//   Hold Space + drag (or middle mouse)     → move the board around
+let boardZoom = 1;
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 2;
+
+const boardVisible = () => !!el.outfitGrid && el.outfitGrid.offsetParent !== null;
+const isTypingTarget = (t) => !!(t && t.closest && t.closest('input:not([type="checkbox"]), textarea, select, [contenteditable="true"]'));
+
+function updateZoomUi() {
+  const label = document.getElementById("zoomLabel");
+  if (label) label.textContent = Math.round(boardZoom * 100) + "%";
+}
+
+function setBoardZoom(next, cx, cy) {
+  const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(next * 100) / 100));
+  if (z === boardZoom) return;
+  const grid = el.outfitGrid;
+  const gs = grid.parentElement;
+  const gsRect = gs.getBoundingClientRect();
+  const gridTop = grid.getBoundingClientRect().top;
+  // Keep the point under the pointer (default: the middle of the visible board) where it is.
+  const px = cx == null ? gsRect.left + gsRect.width / 2 : cx;
+  const py = cy == null ? Math.min(Math.max(gsRect.top, 0) + 200, window.innerHeight / 2) : cy;
+  const contentX = (gs.scrollLeft + (px - gsRect.left)) / boardZoom;
+  const contentY = (py - gridTop) / boardZoom;
+  boardZoom = z;
+  grid.style.zoom = String(z);
+  gs.scrollLeft = contentX * z - (px - gsRect.left);
+  const newTop = grid.getBoundingClientRect().top;
+  window.scrollBy(0, newTop + contentY * z - py);
+  updateZoomUi();
+}
+
+function fitBoardToWidth() {
+  const grid = el.outfitGrid;
+  const natural = parseFloat(grid.style.width) || grid.scrollWidth / boardZoom;
+  const avail = grid.parentElement.clientWidth;
+  setBoardZoom(Math.min(1, avail / natural), null, null);
+  grid.parentElement.scrollLeft = 0;
+}
+
+(function setupBoardZoomPan() {
+  const editor = document.getElementById("editorView");
+  if (editor) {
+    const pill = document.createElement("div");
+    pill.className = "zoom-pill";
+    pill.innerHTML =
+      '<button type="button" id="zoomOutBtn" title="축소 (Ctrl -)">−</button>' +
+      '<button type="button" id="zoomLabel" title="100%로 되돌리기 (Ctrl 0)">100%</button>' +
+      '<button type="button" id="zoomInBtn" title="확대 (Ctrl +)">+</button>' +
+      '<button type="button" id="zoomFitBtn" title="전체가 한눈에 보이게">한눈에 보기</button>';
+    editor.appendChild(pill);
+    pill.querySelector("#zoomOutBtn").addEventListener("click", () => setBoardZoom(boardZoom / 1.15));
+    pill.querySelector("#zoomInBtn").addEventListener("click", () => setBoardZoom(boardZoom * 1.15));
+    pill.querySelector("#zoomLabel").addEventListener("click", () => setBoardZoom(1));
+    pill.querySelector("#zoomFitBtn").addEventListener("click", fitBoardToWidth);
+  }
+
+  // Zoom with the wheel while Alt (or Ctrl) is held.
+  document.addEventListener(
+    "wheel",
+    (e) => {
+      if (!(e.altKey || e.ctrlKey || e.metaKey) || !boardVisible()) return;
+      e.preventDefault();
+      setBoardZoom(boardZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX, e.clientY);
+    },
+    { passive: false }
+  );
+
+  // Ctrl + / Ctrl - / Ctrl 0 and Space-to-pan.
+  let spaceDown = false;
+  let pan = null;
+  const endPan = () => {
+    pan = null;
+    document.body.classList.remove("panning");
+  };
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (!boardVisible()) return;
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        if (e.key === "+" || e.key === "=") {
+          e.preventDefault();
+          return setBoardZoom(boardZoom * 1.15);
+        }
+        if (e.key === "-" || e.key === "_") {
+          e.preventDefault();
+          return setBoardZoom(boardZoom / 1.15);
+        }
+        if (e.key === "0") {
+          e.preventDefault();
+          return setBoardZoom(1);
+        }
+      }
+      if (e.code === "Space" && !e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target)) {
+        e.preventDefault(); // no page scroll, no accidental button press
+        if (document.activeElement && document.activeElement.tagName === "BUTTON") document.activeElement.blur();
+        if (!spaceDown) {
+          spaceDown = true;
+          document.body.classList.add("space-pan");
+        }
+      }
+    },
+    true
+  );
+  document.addEventListener("keyup", (e) => {
+    if (e.code !== "Space") return;
+    spaceDown = false;
+    document.body.classList.remove("space-pan");
+    endPan();
+  });
+  window.addEventListener("blur", () => {
+    spaceDown = false;
+    document.body.classList.remove("space-pan");
+    endPan();
+  });
+
+  document.addEventListener(
+    "mousedown",
+    (e) => {
+      if (!boardVisible()) return;
+      const wantsPan = (spaceDown && e.button === 0) || e.button === 1;
+      if (!wantsPan || isTypingTarget(e.target)) return;
+      e.preventDefault(); // also stops a card or picture from starting a drag
+      e.stopPropagation();
+      const gs = el.outfitGrid.parentElement;
+      pan = { x: e.clientX, y: e.clientY, left: gs.scrollLeft, top: window.scrollY };
+      document.body.classList.add("panning");
+    },
+    true
+  );
+  document.addEventListener("mousemove", (e) => {
+    if (!pan) return;
+    el.outfitGrid.parentElement.scrollLeft = pan.left - (e.clientX - pan.x);
+    window.scrollTo(window.scrollX, pan.top - (e.clientY - pan.y));
+  });
+  document.addEventListener("mouseup", endPan);
+})();
+
+// Export at 100% so the PDF never picks up the on-screen zoom.
+async function exportBoardPdf() {
+  const prev = boardZoom;
+  const gs = el.outfitGrid.parentElement;
+  const left = gs.scrollLeft;
+  if (prev !== 1) {
+    boardZoom = 1;
+    el.outfitGrid.style.zoom = "1";
+  }
+  try {
+    await exportBoardPdfInner();
+  } finally {
+    if (prev !== 1) {
+      boardZoom = prev;
+      el.outfitGrid.style.zoom = String(prev);
+      gs.scrollLeft = left;
+      updateZoomUi();
+    }
+  }
+}
+
 // ---------- PDF export (board table only, landscape) ----------
 function safeFileName(s) {
   return String(s || "코디표").replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 60) || "코디표";
@@ -1299,7 +1472,7 @@ function safeFileName(s) {
 
 const PDF_ROWS_PER_PAGE = 3; // looks (착장) per A4 page in the PDF
 
-async function exportBoardPdf() {
+async function exportBoardPdfInner() {
   const b = state.board;
   if (!b || b.models.length === 0) {
     alert("내보낼 코디표가 없어요. 모델과 제품을 먼저 추가해주세요.");
